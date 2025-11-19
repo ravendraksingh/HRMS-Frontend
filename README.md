@@ -12,7 +12,7 @@ A comprehensive, modern Human Resource Management System built with Next.js, des
 - [Configuration](#configuration)
 - [Running the Application](#running-the-application)
 - [Project Structure](#project-structure)
-- [Authentication & Authorization](#authentication--authorization)
+- [Authentication & Authorization](#authentication-authorization)
 - [API Integration](#api-integration)
 - [Logging](#logging)
 - [Development](#development)
@@ -20,6 +20,7 @@ A comprehensive, modern Human Resource Management System built with Next.js, des
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [License](#license)
+- [Support](#support)
 
 ## 🎯 Overview
 
@@ -39,6 +40,7 @@ The Human Resource Management System (HRMS) is a full-featured web application t
 ## ✨ Features
 
 ### Employee Features
+
 - Personal dashboard with quick access to key information
 - Attendance marking and correction requests
 - Leave application and tracking
@@ -48,6 +50,7 @@ The Human Resource Management System (HRMS) is a full-featured web application t
 - Roster viewing
 
 ### HR Manager Features
+
 - Employee management (CRUD operations)
 - Attendance policy management
 - Holiday calendar management
@@ -58,6 +61,7 @@ The Human Resource Management System (HRMS) is a full-featured web application t
 - Comprehensive reports
 
 ### Manager Features
+
 - Team dashboard with overview statistics
 - Team attendance monitoring
 - Leave approval workflow
@@ -65,6 +69,7 @@ The Human Resource Management System (HRMS) is a full-featured web application t
 - Attendance reports for direct reports
 
 ### Admin Features
+
 - User management
 - Department management
 - Location management
@@ -73,6 +78,7 @@ The Human Resource Management System (HRMS) is a full-featured web application t
 - Organization-wide configuration
 
 ### Technical Features
+
 - JWT-based authentication with refresh tokens
 - Multiple token storage options (localStorage, sessionStorage, httpOnly cookies)
 - Role-based access control (RBAC)
@@ -86,6 +92,7 @@ The Human Resource Management System (HRMS) is a full-featured web application t
 ## 🛠 Tech Stack
 
 ### Frontend
+
 - **Framework**: Next.js 16.0.1 (React 19.2.0)
 - **Styling**: Tailwind CSS 4
 - **UI Components**: Radix UI primitives
@@ -98,11 +105,13 @@ The Human Resource Management System (HRMS) is a full-featured web application t
 - **Date Handling**: date-fns, react-day-picker
 
 ### Backend Integration
+
 - **HTTP Client**: Axios
 - **Authentication**: JWT (jsonwebtoken)
 - **Security**: bcryptjs, crypto-js
 
 ### Development Tools
+
 - **Linting**: ESLint with Next.js config
 - **Logging**: Pino with dual output (console JSON + file text)
 - **Build Tool**: Webpack (Next.js default)
@@ -118,12 +127,14 @@ Before you begin, ensure you have the following installed:
 ## 🚀 Installation
 
 1. **Clone the repository**
+
    ```bash
    git clone <repository-url>
    cd hrms
    ```
 
 2. **Install dependencies**
+
    ```bash
    npm install
    # or
@@ -135,6 +146,7 @@ Before you begin, ensure you have the following installed:
 3. **Set up environment variables** (see [Configuration](#configuration) section)
 
 4. **Start the development server**
+
    ```bash
    npm run dev
    # or
@@ -172,24 +184,26 @@ NODE_ENV=development
 
 ### Environment Variable Descriptions
 
-| Variable | Description | Required | Default |
-|----------|-------------|----------|---------|
-| `BACKEND_API_BASE_URL` | Backend API URL (server-side) | Yes | `http://localhost:8080` |
-| `NEXT_PUBLIC_BACKEND_API_BASE_URL` | Backend API URL (client-side) | Yes | `http://localhost:8080` |
-| `NEXT_PUBLIC_TOKEN_STORAGE_TYPE` | Token storage mechanism | No | `localStorage` |
-| `LOG_LEVEL` | Logging level | No | `info` |
-| `NODE_ENV` | Node environment | No | `development` |
+| Variable                           | Description                   | Required | Default                 |
+| ---------------------------------- | ----------------------------- | -------- | ----------------------- |
+| `BACKEND_API_BASE_URL`             | Backend API URL (server-side) | Yes      | `http://localhost:8080` |
+| `NEXT_PUBLIC_BACKEND_API_BASE_URL` | Backend API URL (client-side) | Yes      | `http://localhost:8080` |
+| `NEXT_PUBLIC_TOKEN_STORAGE_TYPE`   | Token storage mechanism       | No       | `localStorage`          |
+| `LOG_LEVEL`                        | Logging level                 | No       | `info`                  |
+| `NODE_ENV`                         | Node environment              | No       | `development`           |
 
 ### Token Storage Options
 
 The application supports three token storage mechanisms:
 
 1. **localStorage** (default)
+
    - Tokens stored in browser localStorage
    - Persists across browser sessions
    - Accessible via JavaScript
 
 2. **sessionStorage**
+
    - Tokens stored in browser sessionStorage
    - Cleared when browser tab closes
    - Accessible via JavaScript
@@ -340,6 +354,7 @@ The application requires a backend API that provides:
 The application uses two API clients:
 
 1. **External API Client** (`externalApiClient.js`)
+
    - For client-side API calls
    - Includes automatic token refresh
    - Handles authentication headers
@@ -373,21 +388,21 @@ The application uses **Pino** for structured logging with dual output:
 ### Usage Example
 
 ```javascript
-import logger from '@/lib/logger';
+import logger from "@/lib/logger";
 
 // Basic logging
-logger.info('Application started');
-logger.warn('This is a warning');
-logger.error('This is an error');
+logger.info("Application started");
+logger.warn("This is a warning");
+logger.error("This is an error");
 
 // Logging with context
-logger.info({ userId: 123, action: 'login' }, 'User logged in');
-logger.error({ err: error, statusCode: 500 }, 'Request failed');
+logger.info({ userId: 123, action: "login" }, "User logged in");
+logger.error({ err: error, statusCode: 500 }, "Request failed");
 
 // Create child logger with context
-import { createLogger } from '@/lib/logger';
-const requestLogger = createLogger({ requestId: 'req-123' });
-requestLogger.info('Processing request');
+import { createLogger } from "@/lib/logger";
+const requestLogger = createLogger({ requestId: "req-123" });
+requestLogger.info("Processing request");
 ```
 
 ### Log File Location
@@ -423,16 +438,19 @@ npm run build
 ### Common Development Tasks
 
 **Adding a new protected route:**
+
 1. Create route in appropriate route group (`(employees)`, `(hr)`, `(managers)`, or `admin`)
 2. Add authentication check in layout or page
 3. Update sidebar navigation if needed
 
 **Adding a new API endpoint:**
+
 1. Create route in `app/api/`
 2. Use `authorizeRequest` for authentication
 3. Use `fetchBackend` for backend API calls
 
 **Adding a new component:**
+
 1. Create component in appropriate `components/` subdirectory
 2. Use existing UI components from `components/ui/`
 3. Follow existing component patterns
@@ -488,20 +506,24 @@ CMD ["npm", "start"]
 ### Common Issues
 
 **Issue: API requests failing with 401 errors**
+
 - **Solution**: Check that `BACKEND_API_BASE_URL` is correctly set
 - Verify tokens are being stored correctly
 - Check browser console for token refresh errors
 
 **Issue: Logs not appearing in file**
+
 - **Solution**: Ensure `logs/` directory exists and is writable
 - Check `LOG_LEVEL` environment variable
 
 **Issue: Authentication not working**
+
 - **Solution**: Verify `NEXT_PUBLIC_TOKEN_STORAGE_TYPE` is set correctly
 - Check backend API is running and accessible
 - Verify CORS settings on backend
 
 **Issue: Build errors**
+
 - **Solution**: Clear `.next` directory and rebuild
 - Ensure all dependencies are installed
 - Check Node.js version compatibility
@@ -563,4 +585,3 @@ You can also open an issue in the repository for bug reports or feature requests
 ---
 
 **HRMS - Human Resource Management System** | Streamlining HR operations for modern organizations
-
