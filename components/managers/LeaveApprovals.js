@@ -507,12 +507,12 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
             <DialogDescription>
               {selectedLeave && (
                 <>
-                  <p className="font-medium mt-2">
+                  <div className="font-medium mt-2">
                     {getEmployeeName(
                       selectedLeave.employee_id || selectedLeave.id
                     )}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
+                  </div>
+                  <div className="text-sm text-muted-foreground">
                     {formatDateDisplay(
                       selectedLeave.start_date || selectedLeave.from_date
                     )}{" "}
@@ -520,8 +520,8 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
                     {formatDateDisplay(
                       selectedLeave.end_date || selectedLeave.to_date
                     )}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
+                  </div>
+                  <div className="text-sm text-muted-foreground">
                     {selectedLeave.leave_type || selectedLeave.type} •{" "}
                     {selectedLeave.days ||
                       calculateDays(
@@ -529,7 +529,7 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
                         selectedLeave.end_date || selectedLeave.to_date
                       )}{" "}
                     day(s)
-                  </p>
+                  </div>
                 </>
               )}
             </DialogDescription>
