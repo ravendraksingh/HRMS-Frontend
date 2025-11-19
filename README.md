@@ -301,6 +301,7 @@ hrms/
 └── README.md                   # This file
 ```
 
+<a name="authentication-authorization"></a>
 ## 🔐 Authentication & Authorization
 
 ### Authentication Flow
