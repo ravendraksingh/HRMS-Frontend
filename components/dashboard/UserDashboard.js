@@ -87,16 +87,33 @@ const UserDashboard = ({ user }) => {
       // Fetch leave balance and pending leaves
       try {
         const leavesRes = await externalApiClient.get(
-          `/leaves?employeeId=${user.employee_id}`
+          `/leaves?employee_id=${user.employee_id}`
         );
         const leavesData = leavesRes.data?.leaves || [];
 
+        // Log the raw data for debugging
+        dashboardLogger.debug({ 
+          totalLeaves: leavesData.length,
+          sampleLeaves: leavesData.slice(0, 3).map(l => ({ 
+            id: l.id, 
+            status: l.status,
+            employee_id: l.employee_id 
+          })),
+        }, 'Raw leaves data received');
+
         // Calculate leave balance (assuming structure)
+        // Check for various status formats (pending, PENDING, Pending, etc.)
         const approvedLeaves = leavesData.filter(
-          (l) => l.status === "approved" || l.status === "APPROVED"
+          (l) => {
+            const status = (l.status || '').toLowerCase();
+            return status === "approved";
+          }
         );
         const pendingLeaves = leavesData.filter(
-          (l) => l.status === "pending" || l.status === "PENDING"
+          (l) => {
+            const status = (l.status || '').toLowerCase();
+            return status === "pending";
+          }
         );
 
         // Try to get leave balance from backend if available
@@ -116,8 +133,16 @@ const UserDashboard = ({ user }) => {
           },
         }));
         dashboardLogger.info({ 
+          totalLeaves: leavesData.length,
           pendingCount: pendingLeaves.length,
+          approvedCount: approvedLeaves.length,
           leaveBalance: leaveBalance.remaining,
+          pendingLeaves: pendingLeaves.map(l => ({ 
+            id: l.id, 
+            status: l.status,
+            from_date: l.from_date || l.start_date,
+            to_date: l.to_date || l.end_date,
+          })),
         }, 'Leave data fetched');
       } catch (e) {
         dashboardLogger.warn({ err: e }, 'Error fetching leave data');
@@ -157,16 +182,28 @@ const UserDashboard = ({ user }) => {
           `/reports/attendance/monthly?month=${currentMonth}&employeeId=${user.employee_id}`
         );
         const monthlyData = monthlyRes.data?.attendance || monthlyRes.data || {};
+        
+        // Try multiple possible field names for days present
+        const daysPresent = monthlyData?.days_present || 
+                           monthlyData?.present_days || 
+                           monthlyData?.daysPresent ||
+                           monthlyData?.total_days_present ||
+                           (Array.isArray(monthlyData) ? monthlyData.length : 0);
+        
         setStats((prev) => ({
           ...prev,
-          monthlyAttendance:
-            monthlyData?.days_present || monthlyData?.present_days || 0,
+          monthlyAttendance: daysPresent || 0,
         }));
         dashboardLogger.info({ 
-          daysPresent: monthlyData?.days_present || monthlyData?.present_days || 0,
+          daysPresent,
+          responseData: monthlyData,
         }, 'Monthly attendance fetched');
       } catch (e) {
-        dashboardLogger.warn({ err: e }, 'Error fetching monthly attendance');
+        dashboardLogger.warn({ 
+          err: e,
+          employeeId: user.employee_id,
+          month: currentMonth,
+        }, 'Error fetching monthly attendance');
         // Set default value on error
         setStats((prev) => ({
           ...prev,
