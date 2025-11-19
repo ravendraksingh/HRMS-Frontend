@@ -5,13 +5,23 @@ import { Toaster } from "@/components/ui/sonner";
 
 export const metadata = {
   title: {
-    default: "EMS - Employee Management System",
-    template: "%s | EMS",
+    default: "HRMS - Human Resource Management System",
+    template: "%s | HRMS",
   },
-  description: "Employee Management System for managing employees, attendance, and HR operations",
-  keywords: ["employee management", "HR", "attendance", "EMS"],
-  authors: [{ name: "EMS Team" }],
-  creator: "EMS Team",
+  description: "Human Resource Management System (HRMS) for managing employees, attendance, leave, payroll, and comprehensive HR operations",
+  keywords: ["HRMS", "human resource management", "employee management", "HR", "attendance", "payroll", "leave management", "workforce management"],
+  authors: [{ name: "HRMS Team" }],
+  creator: "HRMS Team",
+  openGraph: {
+    title: "HRMS - Human Resource Management System",
+    description: "Comprehensive Human Resource Management System for managing employees, attendance, leave, payroll, and HR operations",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "HRMS - Human Resource Management System",
+    description: "Comprehensive Human Resource Management System for managing employees, attendance, leave, payroll, and HR operations",
+  },
 };
 
 export const viewport = {

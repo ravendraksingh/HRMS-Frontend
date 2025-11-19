@@ -1,6 +1,6 @@
-# Employee Management System (EMS)
+# Human Resource Management System (HRMS)
 
-A comprehensive, modern Employee Management System built with Next.js, designed to streamline HR operations, employee self-service, and organizational management.
+A comprehensive, modern Human Resource Management System built with Next.js, designed to streamline HR operations, employee self-service, and organizational management.
 
 ## 📋 Table of Contents
 
@@ -23,7 +23,7 @@ A comprehensive, modern Employee Management System built with Next.js, designed 
 
 ## 🎯 Overview
 
-The Employee Management System (EMS) is a full-featured web application that enables organizations to manage employees, track attendance, handle leave requests, manage payroll, and perform various HR operations. The system supports multiple user roles (Admin, HR Manager, Manager, Employee) with role-based access control.
+The Human Resource Management System (HRMS) is a full-featured web application that enables organizations to manage employees, track attendance, handle leave requests, manage payroll, and perform various HR operations. The system supports multiple user roles (Admin, HR Manager, Manager, Employee) with role-based access control.
 
 ### Key Capabilities
 
@@ -120,7 +120,7 @@ Before you begin, ensure you have the following installed:
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd ems
+   cd hrms
    ```
 
 2. **Install dependencies**
@@ -233,7 +233,7 @@ npm run type-check
 ## 📁 Project Structure
 
 ```
-ems/
+hrms/
 ├── app/                          # Next.js App Router
 │   ├── (employees)/             # Employee route group
 │   │   ├── attendance/          # Attendance pages
@@ -532,13 +532,35 @@ Contributions are welcome! Please follow these guidelines:
 
 ## 📄 License
 
-This project is private and proprietary. All rights reserved.
+Copyright (c) 2024 Niyava. All rights reserved.
+
+This software and associated documentation files (the "Software") are proprietary and confidential. Unauthorized copying, modification, distribution, or use of this Software, via any medium, is strictly prohibited without the express written permission of Niyava.
+
+**Proprietary License**
+
+- This software is proprietary and not open source
+- Redistribution is not permitted
+- Modification is not permitted without authorization
+- Commercial use is restricted to authorized parties only
+- All rights are reserved by Niyava
+
+For licensing inquiries, please contact: [ravendra@niyava.com](mailto:ravendra@niyava.com)
 
 ## 📞 Support
 
-For support, please contact the development team or open an issue in the repository.
+For support, inquiries, or questions, please contact:
+
+- **Ravendra Kumar Singh**
+- **Email**: [ravendra@niyava.com](mailto:ravendra@niyava.com)
+- **Website**: [https://niyava.com](https://niyava.com)
+
+You can also open an issue in the repository for bug reports or feature requests.
 
 ---
 
 **Built with ❤️ using Next.js and React**
+
+---
+
+**HRMS - Human Resource Management System** | Streamlining HR operations for modern organizations
 
