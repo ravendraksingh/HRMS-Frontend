@@ -18,12 +18,18 @@ import {
   XCircle,
   ArrowRight,
   Gift,
+  RefreshCw,
 } from "lucide-react";
 import { externalApiClient } from "@/app/services/externalApiClient";
 import { formatDateDisplay } from "@/lib/formatDateDisplay";
+import { toast } from "sonner";
+import { Spinner } from "@/components/ui/shadcn-io/spinner";
+import logger from "@/lib/logger";
 
 const UserDashboard = ({ user }) => {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState({
     todayAttendance: null,
     leaveBalance: null,
@@ -36,12 +42,32 @@ const UserDashboard = ({ user }) => {
   useEffect(() => {
     if (user?.employee_id) {
       fetchDashboardData();
+    } else {
+      setLoading(false);
+      setError("User information not available. Please log in again.");
     }
   }, [user?.employee_id]);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (isRefresh = false) => {
+    if (!user?.employee_id) {
+      setError("User information not available");
+      setLoading(false);
+      return;
+    }
+
     try {
-      setLoading(true);
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+
+      const dashboardLogger = logger.child({
+        type: 'dashboard_fetch',
+        employeeId: user.employee_id,
+      });
+
       const today = new Date().toISOString().split("T")[0];
       const currentMonth = new Date().toISOString().slice(0, 7);
 
@@ -50,10 +76,12 @@ const UserDashboard = ({ user }) => {
         const attendanceRes = await externalApiClient.get(
           `/attendance?date=${today}&employee_id=${user.employee_id}`
         );
-        const attendanceData = attendanceRes.data.attendance[0];
+        const attendanceData = attendanceRes.data?.attendance?.[0] || null;
         setStats((prev) => ({ ...prev, todayAttendance: attendanceData }));
+        dashboardLogger.info({ hasAttendance: !!attendanceData }, 'Today\'s attendance fetched');
       } catch (e) {
-        console.error("Error fetching attendance:", e);
+        dashboardLogger.warn({ err: e }, 'Error fetching today\'s attendance');
+        // Don't show error toast for optional data
       }
 
       // Fetch leave balance and pending leaves
@@ -61,7 +89,7 @@ const UserDashboard = ({ user }) => {
         const leavesRes = await externalApiClient.get(
           `/leaves?employeeId=${user.employee_id}`
         );
-        const leavesData = leavesRes.data.leaves;
+        const leavesData = leavesRes.data?.leaves || [];
 
         // Calculate leave balance (assuming structure)
         const approvedLeaves = leavesData.filter(
@@ -71,17 +99,29 @@ const UserDashboard = ({ user }) => {
           (l) => l.status === "pending" || l.status === "PENDING"
         );
 
+        // Try to get leave balance from backend if available
+        const leaveBalance = leavesRes.data?.leave_balance || {
+          total: 20, // Default fallback
+          used: approvedLeaves.length,
+          remaining: 20 - approvedLeaves.length,
+        };
+
         setStats((prev) => ({
           ...prev,
           pendingLeaves: pendingLeaves.slice(0, 5),
           leaveBalance: {
-            total: 20, // This should come from backend
-            used: approvedLeaves.length,
-            remaining: 20 - approvedLeaves.length,
+            total: leaveBalance.total || 20,
+            used: leaveBalance.used || approvedLeaves.length,
+            remaining: leaveBalance.remaining || (leaveBalance.total || 20) - (leaveBalance.used || approvedLeaves.length),
           },
         }));
+        dashboardLogger.info({ 
+          pendingCount: pendingLeaves.length,
+          leaveBalance: leaveBalance.remaining,
+        }, 'Leave data fetched');
       } catch (e) {
-        console.error("Error fetching leaves:", e);
+        dashboardLogger.warn({ err: e }, 'Error fetching leave data');
+        // Don't show error toast for optional data
       }
 
       // Fetch upcoming holidays
@@ -90,7 +130,7 @@ const UserDashboard = ({ user }) => {
         const holidaysRes = await externalApiClient.get(
           `/holidays?year=${currentYear}`
         );
-        const holidaysData = holidaysRes.data.holidays;
+        const holidaysData = holidaysRes.data?.holidays || [];
 
         const upcoming = holidaysData
           .filter((h) => {
@@ -105,8 +145,10 @@ const UserDashboard = ({ user }) => {
           .slice(0, 5);
 
         setStats((prev) => ({ ...prev, upcomingHolidays: upcoming }));
+        dashboardLogger.info({ count: upcoming.length }, 'Upcoming holidays fetched');
       } catch (e) {
-        console.error("Error fetching holidays:", e);
+        dashboardLogger.warn({ err: e }, 'Error fetching holidays');
+        // Don't show error toast for optional data
       }
 
       // Fetch monthly attendance summary
@@ -114,25 +156,42 @@ const UserDashboard = ({ user }) => {
         const monthlyRes = await externalApiClient.get(
           `/reports/attendance/monthly?month=${currentMonth}&employeeId=${user.employee_id}`
         );
-        const monthlyData = monthlyRes.data?.attendance || monthlyRes.data;
+        const monthlyData = monthlyRes.data?.attendance || monthlyRes.data || {};
         setStats((prev) => ({
           ...prev,
           monthlyAttendance:
             monthlyData?.days_present || monthlyData?.present_days || 0,
         }));
+        dashboardLogger.info({ 
+          daysPresent: monthlyData?.days_present || monthlyData?.present_days || 0,
+        }, 'Monthly attendance fetched');
       } catch (e) {
-        console.error("Error fetching monthly attendance:", e);
+        dashboardLogger.warn({ err: e }, 'Error fetching monthly attendance');
         // Set default value on error
         setStats((prev) => ({
           ...prev,
           monthlyAttendance: 0,
         }));
       }
+
+      dashboardLogger.info('Dashboard data fetch completed');
     } catch (error) {
-      console.error("Error fetching dashboard data:", error);
+      const errorMessage = error?.response?.data?.error || error?.message || "Failed to load dashboard data";
+      logger.error({ 
+        err: error,
+        employeeId: user?.employee_id,
+        type: 'dashboard_fetch_error',
+      }, 'Error fetching dashboard data');
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  const handleRefresh = () => {
+    fetchDashboardData(true);
   };
 
   const getAttendanceStatus = () => {
@@ -149,9 +208,37 @@ const UserDashboard = ({ user }) => {
 
   if (loading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex justify-center items-center h-64">
-          <p>Loading dashboard...</p>
+      <div className="container mx-auto max-w-7xl p-6">
+        <div className="flex flex-col justify-center items-center h-64 gap-4">
+          <Spinner size={32} />
+          <p className="text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !stats.todayAttendance && !stats.leaveBalance) {
+    return (
+      <div className="container mx-auto max-w-7xl p-6">
+        <div className="flex flex-col justify-center items-center h-64 gap-4">
+          <AlertCircle className="h-12 w-12 text-red-500" />
+          <div className="text-center">
+            <h2 className="text-xl font-semibold mb-2">Unable to load dashboard</h2>
+            <p className="text-gray-600 mb-4">{error}</p>
+            <Button onClick={handleRefresh} disabled={refreshing}>
+              {refreshing ? (
+                <>
+                  <Spinner size={16} className="mr-2" />
+                  Refreshing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Try Again
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -159,12 +246,39 @@ const UserDashboard = ({ user }) => {
 
   return (
     <div className="container mx-auto max-w-7xl p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
-        <p className="text-gray-600">
-          Welcome back, {user?.employee_name || user?.name || "User"}!
-        </p>
+      <div className="mb-6 flex justify-between items-start">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
+          <p className="text-gray-600">
+            Welcome back, {user?.employee_name || user?.name || "User"}!
+          </p>
+        </div>
+        <Button
+          onClick={handleRefresh}
+          disabled={refreshing || loading}
+          variant="outline"
+          size="sm"
+        >
+          {refreshing ? (
+            <>
+              <Spinner size={16} className="mr-2" />
+              Refreshing...
+            </>
+          ) : (
+            <>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh
+            </>
+          )}
+        </Button>
       </div>
+
+      {error && (
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 text-yellow-600" />
+          <p className="text-sm text-yellow-800">{error}</p>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -176,21 +290,35 @@ const UserDashboard = ({ user }) => {
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
-              <div>
+              <div className="flex-1">
                 <p className="text-2xl font-bold">{attendanceStatus.label}</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {stats.todayAttendance?.clock_in
-                    ? `Clocked in at ${new Date(
+                {stats.todayAttendance?.clock_in ? (
+                  <div className="mt-1 space-y-0.5">
+                    <p className="text-xs text-gray-600">
+                      In: {new Date(
                         stats.todayAttendance.clock_in
                       ).toLocaleTimeString("en-US", {
                         hour: "2-digit",
                         minute: "2-digit",
-                      })}`
-                    : "Not clocked in"}
-                </p>
+                      })}
+                    </p>
+                    {stats.todayAttendance?.clock_out && (
+                      <p className="text-xs text-gray-600">
+                        Out: {new Date(
+                          stats.todayAttendance.clock_out
+                        ).toLocaleTimeString("en-US", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500 mt-1">Not clocked in</p>
+                )}
               </div>
               <div
-                className={`p-3 rounded-full ${
+                className={`p-3 rounded-full ml-4 ${
                   attendanceStatus.status === "present" ||
                   attendanceStatus.status === "completed"
                     ? "bg-green-100"
@@ -220,15 +348,25 @@ const UserDashboard = ({ user }) => {
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
-              <div>
+              <div className="flex-1">
                 <p className="text-2xl font-bold">
-                  {stats.leaveBalance?.remaining || "N/A"}
+                  {stats.leaveBalance?.remaining !== undefined ? stats.leaveBalance.remaining : "N/A"}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
                   of {stats.leaveBalance?.total || "N/A"} days remaining
                 </p>
+                {stats.leaveBalance?.total && stats.leaveBalance?.remaining !== undefined && (
+                  <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full transition-all"
+                      style={{
+                        width: `${Math.min(100, (stats.leaveBalance.remaining / stats.leaveBalance.total) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                )}
               </div>
-              <div className="p-3 rounded-full bg-blue-100">
+              <div className="p-3 rounded-full bg-blue-100 ml-4">
                 <CalendarOff className="h-6 w-6 text-blue-600" />
               </div>
             </div>
@@ -243,11 +381,16 @@ const UserDashboard = ({ user }) => {
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
-              <div>
+              <div className="flex-1">
                 <p className="text-2xl font-bold">{stats.monthlyAttendance}</p>
                 <p className="text-xs text-gray-500 mt-1">Days Present</p>
+                {stats.todayAttendance?.clock_in && (
+                  <p className="text-xs text-green-600 mt-1 font-medium">
+                    Today: Present
+                  </p>
+                )}
               </div>
-              <div className="p-3 rounded-full bg-purple-100">
+              <div className="p-3 rounded-full bg-purple-100 ml-4">
                 <TrendingUp className="h-6 w-6 text-purple-600" />
               </div>
             </div>
@@ -333,7 +476,7 @@ const UserDashboard = ({ user }) => {
             <div className="flex items-center justify-between">
               <CardTitle>Upcoming Holidays</CardTitle>
               <Button asChild variant="ghost" size="sm">
-                <Link href="/admin/holidays">
+                <Link href="/holidays">
                   View All
                   <ArrowRight className="ml-1 h-3 w-3" />
                 </Link>

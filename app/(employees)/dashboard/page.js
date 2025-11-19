@@ -1,11 +1,10 @@
 "use client";
 
-const Dashboard = () => {
-  return (
-    <div>
-      <h1>Dashboard</h1>
-    </div>
-  );
-};
+import { useAuth } from "@/components/auth/AuthContext";
+import UserDashboard from "@/components/dashboard/UserDashboard";
 
-export default Dashboard;
+export default function Dashboard() {
+  const { user } = useAuth();
+
+  return <UserDashboard user={user} />;
+}
