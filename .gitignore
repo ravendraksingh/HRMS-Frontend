@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# custom folders which are not to pushed to git
+/postman
+
 # dependencies
 /node_modules
 /.pnp
@@ -29,6 +32,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+
+# logs
+/logs
+*.log
 
 # env files (can opt-in for committing if needed)
 .env*

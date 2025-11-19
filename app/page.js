@@ -1,65 +1,130 @@
-import Image from "next/image";
+"use client";
+
+import { useAuth } from "@/components/auth/AuthContext";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import {
+  LayoutDashboard,
+  UserCircle,
+  BadgeIndianRupee,
+  UserRound,
+  CalendarClock,
+  Calendar,
+  Settings,
+  ArrowRight,
+} from "lucide-react";
 
 export default function Home() {
+  const { user } = useAuth();
+
+  const quickLinks = [
+    { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, description: "View your dashboard" },
+    { title: "Profile", url: "/profile", icon: UserCircle, description: "View your profile" },
+    { title: "Attendance", url: "/attendance", icon: CalendarClock, description: "Mark attendance" },
+    { title: "Leave", url: "/leave", icon: Calendar, description: "Apply for leave" },
+    { title: "Salary", url: "/salary", icon: BadgeIndianRupee, description: "View salary details" },
+    { title: "Personal Details", url: "/personal-details", icon: UserRound, description: "Update personal information" },
+  ];
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.js file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div className="container mx-auto max-w-7xl p-6">
+      <div className="mb-8">
+        <h1 className="text-4xl font-bold mb-2">
+          Welcome{user?.employee_name || user?.name ? `, ${user.employee_name || user.name}` : ""}!
+        </h1>
+        <p className="text-gray-600 text-lg">
+          Manage your work, track attendance, and access important information from one place.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        {quickLinks.map((link) => (
+          <Card key={link.url} className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <link.icon className="h-5 w-5 text-blue-600" />
+                </div>
+                <CardTitle className="text-lg">{link.title}</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-gray-600 mb-4">{link.description}</p>
+              <Button asChild variant="outline" className="w-full">
+                <Link href={link.url}>
+                  Go to {link.title}
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <Button asChild variant="outline" className="w-full justify-start">
+                <Link href="/attendance">
+                  <CalendarClock className="mr-2 h-4 w-4" />
+                  Mark Today's Attendance
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="w-full justify-start">
+                <Link href="/leave">
+                  <Calendar className="mr-2 h-4 w-4" />
+                  Apply for Leave
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="w-full justify-start">
+                <Link href="/roster">
+                  <CalendarClock className="mr-2 h-4 w-4" />
+                  View Daily Roster
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Account Information</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {user?.employee_code && (
+                <div>
+                  <p className="text-sm text-gray-500">Employee Code</p>
+                  <p className="font-semibold">{user.employee_code}</p>
+                </div>
+              )}
+              {user?.employee_email && (
+                <div>
+                  <p className="text-sm text-gray-500">Email</p>
+                  <p className="font-semibold">{user.employee_email}</p>
+                </div>
+              )}
+              {user?.organization_name && (
+                <div>
+                  <p className="text-sm text-gray-500">Organization</p>
+                  <p className="font-semibold">{user.organization_name}</p>
+                </div>
+              )}
+              <Button asChild variant="outline" className="w-full mt-4">
+                <Link href="/settings">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Account Settings
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
