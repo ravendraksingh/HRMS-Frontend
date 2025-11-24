@@ -10,6 +10,7 @@ export function proxy(request) {
 
   // Protected route patterns
   const protectedRoutePatterns = [
+    "/",
     "/profile",
     "/dashboard",
     "/employees",

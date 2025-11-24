@@ -7,11 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { externalApiClient } from "@/app/services/externalApiClient";
-import { useAuth } from "@/components/auth/AuthContext";
 import OrganizationInfoCard from "@/components/common/OrganizationInfoCard";
 
 const LocationsPage = () => {
-  const { user } = useAuth();
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -86,15 +84,10 @@ const LocationsPage = () => {
       toast.error("Name is required");
       return;
     }
-    if (!user?.org_id && !user?.organization_id) {
-      setError("Organization ID not found");
-      toast.error("Organization ID not found");
-      return;
-    }
+    
     try {
       const res = await externalApiClient.post("/locations", {
         ...newLocation,
-        organization_id: user?.org_id || user?.organization_id,
       });
       console.log("Add location response:", res.data);
       toast.success("Location added successfully!");

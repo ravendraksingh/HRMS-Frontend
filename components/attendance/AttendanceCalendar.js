@@ -17,7 +17,6 @@ import {
 } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { useAuth } from "../auth/AuthContext";
 
 function normalizeToHHMM(value) {
   if (!value) return "";
@@ -180,7 +179,6 @@ const AttendanceCalendar = ({ data }) => {
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const { user } = useAuth();
   const [attendanceMap, setAttendanceMap] = useState({});
 
   useEffect(() => {

@@ -42,8 +42,10 @@ import {
 } from "lucide-react";
 import { formatDateDisplay } from "@/lib/formatDateDisplay";
 import { Spinner } from "@/components/ui/shadcn-io/spinner";
+import { useAuth } from "@/components/common/AuthContext";
 
 export default function LeaveApprovals({ teamMembers, managerId }) {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [leaves, setLeaves] = useState([]);
   const [filteredLeaves, setFilteredLeaves] = useState([]);
@@ -100,7 +102,7 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
 
       const res = await externalApiClient.get(url);
       const leavesData = res.data?.leaves || res.data || [];
-      
+
       // Ensure it's an array and sort by created date (newest first)
       const teamLeaves = Array.isArray(leavesData) ? leavesData : [];
       teamLeaves.sort((a, b) => {
@@ -158,27 +160,87 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
       setProcessing(true);
       const leaveId = selectedLeave.id || selectedLeave.leave_id;
 
+      // Get the approver ID (user_id or employee_id)
+      const approvedBy = user?.user_id || user?.employee_id || managerId;
+
+      if (!approvedBy) {
+        toast.error("Unable to identify approver. Please try again.");
+        return;
+      }
+
+      // Use the correct API endpoints: POST /leaves/{id}/approve or /leaves/{id}/reject
+      const endpoint =
+        approvalAction === "approve"
+          ? `/leaves/${leaveId}/approve`
+          : `/leaves/${leaveId}/reject`;
+
       const payload = {
-        status: approvalAction === "approve" ? "approved" : "rejected",
-        approver_remarks: approvalComment || null,
+        approved_by: approvedBy,
+        ...(approvalComment && { approver_remarks: approvalComment }),
       };
 
-      await externalApiClient.patch(`/leaves/${leaveId}`, payload);
+      // Make the API call
+      const response = await externalApiClient.post(endpoint, payload);
 
-      toast.success(
-        `Leave request ${approvalAction === "approve" ? "approved" : "rejected"} successfully`
+      // Verify the response indicates success
+      if (!response || response.status < 200 || response.status >= 300) {
+        throw new Error("API call did not return success status");
+      }
+
+      // Verify the leave was actually updated by fetching it directly from the database
+      const verifyResponse = await externalApiClient.get(
+        `/leaves?employee_id=${selectedLeave.employee_id || selectedLeave.id}`
       );
-      setApprovalDialogOpen(false);
-      setSelectedLeave(null);
-      setApprovalComment("");
-      await fetchLeaves();
+      const allLeaves =
+        verifyResponse.data?.leaves || verifyResponse.data || [];
+      const updatedLeave = allLeaves.find(
+        (l) => (l.id || l.leave_id) === leaveId
+      );
+
+      // Only show success if the status was actually updated in the database
+      const expectedStatus =
+        approvalAction === "approve" ? "approved" : "rejected";
+      const actualStatus = updatedLeave?.status?.toLowerCase();
+
+      if (actualStatus === expectedStatus) {
+        // Close dialog only after verification
+        setApprovalDialogOpen(false);
+        setSelectedLeave(null);
+        setApprovalComment("");
+
+        toast.success(
+          `Leave request ${
+            approvalAction === "approve" ? "approved" : "rejected"
+          } successfully`
+        );
+
+        // Refresh the list
+        await fetchLeaves();
+
+        // If filter is set to "pending" and we just approved/rejected, switch to "all" to show the updated record
+        if (filters.status === "pending") {
+          setFilters({ ...filters, status: "all" });
+        }
+      } else {
+        // Status didn't update in database
+        toast.error(
+          `Leave request update failed. Current status: ${
+            actualStatus || "unknown"
+          }. Please try again.`
+        );
+        // Don't close dialog on error so user can retry
+      }
     } catch (error) {
       console.error("Error updating leave:", error);
       const errorMsg =
         error?.response?.data?.message ||
         error?.response?.data?.error ||
+        error?.message ||
         `Failed to ${approvalAction} leave request`;
       toast.error(errorMsg);
+
+      // Keep dialog open on error so user can retry
+      // Don't close the dialog
     } finally {
       setProcessing(false);
     }
@@ -256,8 +318,10 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
           <CardContent>
             <div className="flex items-center justify-between">
               <p className="text-2xl font-bold text-green-600">
-                {leaves.filter((l) => l.status?.toLowerCase() === "approved")
-                  .length}
+                {
+                  leaves.filter((l) => l.status?.toLowerCase() === "approved")
+                    .length
+                }
               </p>
               <div className="p-3 rounded-full bg-green-100">
                 <CheckCircle2 className="h-6 w-6 text-green-600" />
@@ -275,8 +339,10 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
           <CardContent>
             <div className="flex items-center justify-between">
               <p className="text-2xl font-bold text-red-600">
-                {leaves.filter((l) => l.status?.toLowerCase() === "rejected")
-                  .length}
+                {
+                  leaves.filter((l) => l.status?.toLowerCase() === "rejected")
+                    .length
+                }
               </p>
               <div className="p-3 rounded-full bg-red-100">
                 <XCircle className="h-6 w-6 text-red-600" />
@@ -376,9 +442,9 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
                   <SelectItem value="all">All Types</SelectItem>
                   <SelectItem value="casual">Casual</SelectItem>
                   <SelectItem value="sick">Sick</SelectItem>
-                  <SelectItem value="paid">Paid</SelectItem>
+                  <SelectItem value="earned">Earned</SelectItem>
                   <SelectItem value="unpaid">Unpaid</SelectItem>
-                  <SelectItem value="emergency">Emergency</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -594,4 +660,3 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
     </div>
   );
 }
-

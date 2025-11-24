@@ -29,7 +29,7 @@ const EmployeeCard = ({
 
   const handleEdit = (employee) => {
     if (onEditStart) {
-      onEditStart(employee.id);
+      onEditStart(employee.empid || employee.id);
     }
     setDraftEmployee({
       employee_code: employee.employee_code || "",
@@ -87,9 +87,10 @@ const EmployeeCard = ({
       onUpdate();
     } catch (error) {
       console.error("Error updating employee:", error);
+      // New format: { "error": "...", "status": 404, "path": "...", "method": "..." }
       const errorMsg =
-        error?.response?.data?.message ||
         error?.response?.data?.error ||
+        error?.response?.data?.message ||
         error?.message ||
         "Failed to update employee";
       setError(errorMsg);
@@ -100,14 +101,15 @@ const EmployeeCard = ({
   const handleDelete = async () => {
     if (!confirm(`Are you sure you want to delete ${employee.name}?`)) return;
     try {
-      await apiClient.delete(`/api/employees/${employee.id}`);
+      await apiClient.delete(`/api/employees/${employee.empid || employee.id}`);
       toast.success("Employee deleted successfully!");
       onUpdate();
     } catch (error) {
       console.error("Error deleting employee:", error);
+      // New format: { "error": "...", "status": 404, "path": "...", "method": "..." }
       const errorMsg =
-        error?.response?.data?.message ||
         error?.response?.data?.error ||
+        error?.response?.data?.message ||
         "Failed to delete";
       toast.error(errorMsg);
     }
@@ -116,7 +118,7 @@ const EmployeeCard = ({
   const getDepartmentName = (deptId) => {
     if (!deptId) return "N/A";
     const dept = departments.find(
-      (d) => d.id === deptId || d.department_id === deptId
+      (d) => d.deptid === deptId || d.id === deptId || d.department_id === deptId
     );
     return dept?.name || "N/A";
   };
@@ -147,7 +149,7 @@ const EmployeeCard = ({
         }
         return d.department_head === mgrId;
       }
-      return d.department_head_id === mgrId;
+      return d.department_head_empid === mgrId || d.department_head_id === mgrId;
     });
     if (dept?.department_head) {
       if (typeof dept.department_head === "object") {
@@ -242,10 +244,10 @@ const EmployeeCard = ({
                 <SelectContent>
                   {departments.map((dept) => (
                     <SelectItem
-                      key={dept.id || dept.department_id}
-                      value={String(dept.id || dept.department_id)}
+                      key={dept.deptid || dept.id || dept.department_id}
+                      value={String(dept.deptid || dept.id || dept.department_id)}
                     >
-                      {dept.name}
+                      {dept.name} {dept.short_name ? `(${dept.short_name})` : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>

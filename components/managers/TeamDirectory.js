@@ -32,6 +32,8 @@ export default function TeamDirectory({ teamMembers }) {
   const [departments, setDepartments] = useState([]);
   const [locations, setLocations] = useState([]);
 
+  console.log("team members in TeamDirectory", teamMembers);
+
   useEffect(() => {
     if (teamMembers) {
       filterMembers();
@@ -45,8 +47,12 @@ export default function TeamDirectory({ teamMembers }) {
   const fetchDepartmentsAndLocations = async () => {
     try {
       const [deptRes, locRes] = await Promise.all([
-        externalApiClient.get("/departments").catch(() => ({ data: { departments: [] } })),
-        externalApiClient.get("/locations").catch(() => ({ data: { locations: [] } })),
+        externalApiClient
+          .get("/departments")
+          .catch(() => ({ data: { departments: [] } })),
+        externalApiClient
+          .get("/locations")
+          .catch(() => ({ data: { locations: [] } })),
       ]);
 
       setDepartments(deptRes.data?.departments || []);
@@ -63,17 +69,19 @@ export default function TeamDirectory({ teamMembers }) {
     }
 
     const query = searchQuery.toLowerCase();
+    console.log("teamMembers", teamMembers);
     const filtered = (teamMembers || []).filter((member) => {
-      const name = (member.employee_name || member.name || "").toLowerCase();
-      const email = (member.email || member.employee_email || "").toLowerCase();
-      const code = (member.employee_code || "").toLowerCase();
-      const dept = getDepartmentName(member.department_id || member.department)
-        .toLowerCase();
+      const name = (member.name || "").toLowerCase();
+      const email = (member.email || "").toLowerCase();
+      const empid = (member.empid || "").toLowerCase();
+      const dept = getDepartmentName(
+        member.department_id || member.department
+      ).toLowerCase();
 
       return (
         name.includes(query) ||
         email.includes(query) ||
-        code.includes(query) ||
+        empid.includes(query) ||
         dept.includes(query)
       );
     });
@@ -84,7 +92,8 @@ export default function TeamDirectory({ teamMembers }) {
   const getDepartmentName = (deptId) => {
     if (!deptId) return "N/A";
     const dept = departments.find(
-      (d) => d.id === deptId || d.department_id === deptId
+      (d) =>
+        d.deptid === deptId || d.id === deptId || d.department_id === deptId
     );
     return dept?.name || "N/A";
   };
@@ -108,6 +117,79 @@ export default function TeamDirectory({ teamMembers }) {
 
   return (
     <div className="space-y-6">
+      {/* Team Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Team Members
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-2xl font-bold">{teamMembers?.length || 0}</p>
+              </div>
+              <div className="p-3 rounded-full bg-blue-100">
+                <UsersRound className="h-6 w-6 text-blue-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Departments{" "}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-2xl font-bold">
+                  {
+                    new Set(
+                      (teamMembers || [])
+                        .map((m) => m.department_id)
+                        .filter(Boolean)
+                    ).size
+                  }
+                </p>
+              </div>
+              <div className="p-3 rounded-full bg-purple-100">
+                <Building className="h-6 w-6 text-purple-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Locations
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-2xl font-bold">
+                  {
+                    new Set(
+                      (teamMembers || [])
+                        .map((m) => m.location_id || m.location)
+                        .filter(Boolean)
+                    ).size
+                  }
+                </p>
+              </div>
+              <div className="p-3 rounded-full bg-green-100">
+                <MapPin className="h-6 w-6 text-green-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Search */}
       <Card>
         <CardHeader>
@@ -153,10 +235,11 @@ export default function TeamDirectory({ teamMembers }) {
                 </TableHeader>
                 <TableBody>
                   {filteredMembers.map((member, index) => {
-                    const name = member.employee_name || member.name || "Unknown";
+                    const name =
+                      member.employee_name || member.name || "Unknown";
                     const email = member.email || member.employee_email || "-";
                     const phone = member.phone || member.phone_number || "-";
-                    const code = member.employee_code || "-";
+                    const code = member.empid || "-";
 
                     return (
                       <TableRow key={member.employee_id || member.id || index}>
@@ -210,7 +293,9 @@ export default function TeamDirectory({ teamMembers }) {
                           <div className="flex items-center gap-2">
                             <MapPin className="h-4 w-4 text-muted-foreground" />
                             <span className="text-sm">
-                              {getLocationName(member.location_id || member.location)}
+                              {getLocationName(
+                                member.location_id || member.location
+                              )}
                             </span>
                           </div>
                         </TableCell>
@@ -232,70 +317,6 @@ export default function TeamDirectory({ teamMembers }) {
           )}
         </CardContent>
       </Card>
-
-      {/* Team Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Team Members
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <p className="text-2xl font-bold">{teamMembers?.length || 0}</p>
-              <div className="p-3 rounded-full bg-blue-100">
-                <UsersRound className="h-6 w-6 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Departments
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <p className="text-2xl font-bold">
-                {new Set(
-                  (teamMembers || [])
-                    .map((m) => m.department_id || m.department)
-                    .filter(Boolean)
-                ).size}
-              </p>
-              <div className="p-3 rounded-full bg-purple-100">
-                <Building className="h-6 w-6 text-purple-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Locations
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <p className="text-2xl font-bold">
-                {new Set(
-                  (teamMembers || [])
-                    .map((m) => m.location_id || m.location)
-                    .filter(Boolean)
-                ).size}
-              </p>
-              <div className="p-3 rounded-full bg-green-100">
-                <MapPin className="h-6 w-6 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }
-

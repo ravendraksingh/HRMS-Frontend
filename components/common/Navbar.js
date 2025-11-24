@@ -1,7 +1,5 @@
 "use client";
-import { useState } from "react";
-import { LogOut, Moon, Settings, Sun, User } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { LogOut, Menu } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,90 +8,74 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { SidebarTrigger } from "@/components/ui/sidebar";
-import { useTheme } from "next-themes";
+import { useSidebar } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import NavLink from "@/components/common/NavLink";
-import { useAuth } from "../auth/AuthContext";
-import DynamicBreadcrumb from "./DynamicBreadcrumb";
+import { clientTokenStorage } from "@/lib/tokenStorage";
+import { internalApiClient } from "@/app/services/internalApiClient";
+import { useAuth } from "@/components/common/AuthContext";
 
 const Navbar = () => {
-  const { theme, setTheme } = useTheme();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+  const { toggleSidebar } = useSidebar();
 
   async function handleLogout() {
-    // Use centralized logout from AuthContext
-    await logout();
+    try {
+      await internalApiClient.post("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (error) {
+      console.error("Logout API error:", error);
+    } finally {
+      await clientTokenStorage.clearTokens();
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+    }
   }
+
+  const getInitials = (name) => {
+    if (!name) return "?";
+    const parts = name.split(" ");
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+  };
 
   return (
     <>
-      <nav className="p-4 flex items-center justify-between bg-background border-b">
-        {/** LEFT */}
-        <div className="flex flex-row items-center">
-          <SidebarTrigger onClick={() => setMenuOpen(!menuOpen)} />
-          <div className="ml-3 hidden md:block">
-            <DynamicBreadcrumb />
-          </div>
-        </div>
-        {/** RIGHT */}
-        <div className="flex flex-row items-center gap-1">
-          {/* Desktop menu - hidden on mobile */}
-          <div className="hidden md:flex md:flex-row md:items-center md:gap-1">
-            {/* <NavLink href="/dashboard">Dashboard</NavLink>
-            <NavLink href="/employees">Employees</NavLink>
-            <NavLink href="/salary">Salaries</NavLink>
-            <NavLink href="/performance">Performance</NavLink> */}
-            {/* {user && user?.role === "admin" && (
-              <NavLink href="/setting">Settings</NavLink>
-            )} */}
-          </div>
-          {/* USER MENU - visible on all devices, positioned on right */}
-          <div className="flex items-center gap-4 ml-auto">
-            <DropdownMenu>
-              <DropdownMenuTrigger className="focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-full">
-                <Avatar className="h-10 w-10 md:h-9 md:w-9 ring-2 ring-offset-2 ring-primary/20 hover:ring-primary/40 transition-all">
-                  <AvatarImage src="https://github.com/shadcn.png" />
-                  <AvatarFallback className="bg-primary text-primary-foreground font-semibold">
-                    {user?.employee_name?.[0]?.toUpperCase() || user?.name?.[0]?.toUpperCase() || "U"}
-                  </AvatarFallback>
-                </Avatar>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent 
-                sideOffset={10}
-                align="end"
-                className="w-56"
-              >
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <a href="/profile" className="flex items-center w-full">
-                    <User className="h-[1.2rem] w-[1.2rem] mr-2" />
-                    Profile
-                  </a>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <a href="/settings" className="flex items-center w-full">
-                    <Settings className="h-[1.2rem] w-[1.2rem] mr-2" />
-                    Settings
-                  </a>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  className="hover:cursor-pointer"
-                  onClick={handleLogout}
-                >
-                  <LogOut className="h-[1.2rem] w-[1.2rem] mr-2" />
-                  Logout
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
+      <nav className="p-4 flex items-center justify-between bg-background border-b md:hidden">
+        {/* Left: User Menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger>
+            <span className="text-xl font-bold border-1 border-gray-400 rounded-full p-2">
+              {getInitials(user?.name)}
+            </span>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent sideOffset={10} align="start" className="w-56">
+            <DropdownMenuLabel>My Account</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              className="hover:cursor-pointer"
+              onClick={handleLogout}
+            >
+              <LogOut className="h-[1.2rem] w-[1.2rem] mr-2" />
+              Logout
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Right: Sidebar Toggle */}
+        <Menu
+          size={28}
+          className="hover:cursor-pointer"
+          onClick={toggleSidebar}
+          aria-label="Toggle sidebar"
+        />
       </nav>
-      <Separator />
+      <Separator className="md:hidden" />
     </>
   );
 };

@@ -8,7 +8,6 @@
 
 import axios from "axios";
 import { clientTokenStorage } from "@/lib/tokenStorage";
-import logger from "@/lib/logger";
 
 /**
  * Get access token using token storage abstraction
@@ -18,11 +17,6 @@ const getToken = async () => {
   try {
     return await clientTokenStorage.getAccessToken();
   } catch (error) {
-    logger.error({
-      err: error,
-      type: 'token_storage_error',
-      action: 'get_access_token',
-    }, 'Error getting access token from storage');
     return null;
   }
 };
@@ -90,11 +84,6 @@ const refreshAccessToken = async () => {
 
     return refreshData.accessToken || await clientTokenStorage.getAccessToken();
   } catch (error) {
-    logger.error({
-      err: error,
-      type: 'token_refresh_error',
-      action: 'refresh_access_token',
-    }, 'Error refreshing access token');
     throw error;
   }
 };
@@ -145,13 +134,6 @@ externalApiClient.interceptors.response.use(
       // Check if this request has already been retried
       if (originalRequest._retry) {
         // Already retried, refresh must have failed - redirect to login
-        logger.warn({
-          err: error,
-          type: 'authentication_error',
-          action: 'token_refresh_failed_after_retry',
-          path: currentPath,
-          url: originalRequest?.url,
-        }, 'Token refresh failed after retry, redirecting to login');
         await clientTokenStorage.clearTokens();
         
         if (typeof window !== "undefined") {
@@ -164,14 +146,6 @@ externalApiClient.interceptors.response.use(
       // Check if we have a token (if not, user is not authenticated)
       const token = await getToken();
       if (!token) {
-        logger.warn({
-          err: error,
-          type: 'authentication_error',
-          action: 'no_token_found',
-          path: currentPath,
-          url: originalRequest?.url,
-        }, 'Unauthorized - no token found, redirecting to login');
-        
         await clientTokenStorage.clearTokens();
         
         if (typeof window !== "undefined") {
@@ -218,13 +192,6 @@ externalApiClient.interceptors.response.use(
         }
       } catch (refreshError) {
         // Refresh failed - clear tokens and redirect to login
-        logger.error({
-          err: refreshError,
-          type: 'token_refresh_error',
-          action: 'refresh_failed',
-          path: currentPath,
-          url: originalRequest?.url,
-        }, 'Token refresh failed, redirecting to login');
         isRefreshing = false;
         refreshSubscribers = [];
         
@@ -246,78 +213,11 @@ externalApiClient.interceptors.response.use(
       // API Error - response received
       const { status, data, headers } = error.response;
       const errorMessage = data?.error || data?.message || error.message || "An error occurred";
-      
-      // Create child logger with request context
-      const requestLogger = logger.child({
-        type: 'api_error',
-        method: originalRequest?.method?.toUpperCase(),
-        url: originalRequest?.url,
-        baseURL: originalRequest?.baseURL,
-        path: data?.path || originalRequest?.url,
-        statusCode: status,
-        statusText: error.response.statusText,
-      });
-
-      // Log based on severity
-      if (status === 401) {
-        requestLogger.warn({
-          err: error,
-          errorMessage,
-          responseData: data,
-          action: 'authentication_failed',
-        }, 'Authentication failed - unauthorized request');
-      } else if (status === 403) {
-        requestLogger.warn({
-          err: error,
-          errorMessage,
-          responseData: data,
-          action: 'authorization_failed',
-        }, 'Authorization failed - insufficient permissions');
-      } else if (status >= 500) {
-        requestLogger.error({
-          err: error,
-          errorMessage,
-          responseData: data,
-          requestData: originalRequest?.data,
-          action: 'server_error',
-        }, `Server error (${status}) - backend API failure`);
-      } else {
-        requestLogger.warn({
-          err: error,
-          errorMessage,
-          responseData: data,
-          action: 'client_error',
-        }, `Client error (${status}) - invalid request`);
-      }
 
       // Enhance error object with error message from backend
       if (data && typeof data === "object") {
         error.response.data = { ...data, errorMessage: errorMessage };
       }
-    } else if (error.request) {
-      // Network Error - no response received
-      const networkLogger = logger.child({
-        type: 'network_error',
-        method: originalRequest?.method?.toUpperCase(),
-        url: originalRequest?.url,
-        baseURL: originalRequest?.baseURL,
-      });
-
-      networkLogger.error({
-        err: error,
-        code: error.code, // ECONNREFUSED, ETIMEDOUT, ENOTFOUND, etc.
-        message: error.message,
-        timeout: originalRequest?.timeout,
-        action: 'network_failure',
-      }, 'Network request failed - no response from server');
-    } else {
-      // Request Setup Error
-      logger.error({
-        err: error,
-        type: 'request_setup_error',
-        message: error.message,
-        action: 'request_configuration_failed',
-      }, 'Error setting up API request');
     }
     return Promise.reject(error);
   }

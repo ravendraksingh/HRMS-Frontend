@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Building } from "lucide-react";
-import { useAuth } from "@/components/auth/AuthContext";
+import { useAuth } from "./AuthContext";
 
 const OrganizationInfoCard = ({ maxWidth = "1000px", className = "" }) => {
   const { user } = useAuth();
@@ -42,4 +42,3 @@ const OrganizationInfoCard = ({ maxWidth = "1000px", className = "" }) => {
 };
 
 export default OrganizationInfoCard;
-

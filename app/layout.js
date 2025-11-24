@@ -1,26 +1,37 @@
-import { AuthProvider } from "@/components/auth/AuthContext";
 import "./globals.css";
 import MainLayout from "@/components/common/MainLayout";
 import { Toaster } from "@/components/ui/sonner";
-
+import { AuthProvider } from "@/components/common/AuthContext";
 export const metadata = {
   title: {
     default: "HRMS - Human Resource Management System",
     template: "%s | HRMS",
   },
-  description: "Human Resource Management System (HRMS) for managing employees, attendance, leave, payroll, and comprehensive HR operations",
-  keywords: ["HRMS", "human resource management", "employee management", "HR", "attendance", "payroll", "leave management", "workforce management"],
+  description:
+    "Human Resource Management System (HRMS) for managing employees, attendance, leave, payroll, and comprehensive HR operations",
+  keywords: [
+    "HRMS",
+    "human resource management",
+    "employee management",
+    "HR",
+    "attendance",
+    "payroll",
+    "leave management",
+    "workforce management",
+  ],
   authors: [{ name: "HRMS Team" }],
   creator: "HRMS Team",
   openGraph: {
     title: "HRMS - Human Resource Management System",
-    description: "Comprehensive Human Resource Management System for managing employees, attendance, leave, payroll, and HR operations",
+    description:
+      "Comprehensive Human Resource Management System for managing employees, attendance, leave, payroll, and HR operations",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "HRMS - Human Resource Management System",
-    description: "Comprehensive Human Resource Management System for managing employees, attendance, leave, payroll, and HR operations",
+    description:
+      "Comprehensive Human Resource Management System for managing employees, attendance, leave, payroll, and HR operations",
   },
 };
 
@@ -36,8 +47,8 @@ export default async function RootLayout({ children }) {
       <body className="antialiased flex">
         <AuthProvider>
           <MainLayout>{children}</MainLayout>
-          <Toaster position="top-center" richColors />
         </AuthProvider>
+        <Toaster position="top-center" richColors />
       </body>
     </html>
   );

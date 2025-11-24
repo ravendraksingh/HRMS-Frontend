@@ -8,7 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import apiClient from "@/app/services/internalApiClient";
 import { Badge } from "@/components/ui/badge";
-import { useAuth } from "@/components/auth/AuthContext";
 import OrganizationInfoCard from "@/components/common/OrganizationInfoCard";
 import { externalApiClient } from "@/app/services/externalApiClient";
 import {
@@ -20,9 +19,10 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useAuth } from "@/components/common/AuthContext";
+import { getErrorMessage } from "@/lib/emsUtil";
 
 const RolesPage = () => {
-  const { user } = useAuth();
   const [roles, setRoles] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,29 +33,39 @@ const RolesPage = () => {
     name: "",
     code: "",
     description: "",
-    is_active: 1,
+    is_active: "Y",
     permissions: {},
   });
   const [draftRole, setDraftRole] = useState({});
   const [viewingUsersId, setViewingUsersId] = useState(null);
+  const { user } = useAuth();
+  console.log("user in RolesPage", user);
 
   useEffect(() => {
-    if (user?.user_id) {
+    if (user?.empid) {
       fetchRoles();
       fetchUsers();
     }
-  }, [user?.user_id]);
+  }, [user?.empid]);
 
   const fetchRoles = async () => {
     try {
       setLoading(true);
+      setError("");
       const res = await externalApiClient.get("/roles");
-      console.log("Roles API response:", res.data);
-      setRoles(res.data.roles);
+      const rolesData = res.data?.roles || [];
+      setRoles(rolesData);
+      setError("");
     } catch (e) {
       console.error("Error fetching roles:", e);
-      setError("Error fetching roles");
-      toast.error("Failed to load roles");
+      console.error("Error details:", {
+        message: e.message,
+        response: e.response?.data,
+        status: e.response?.status,
+      });
+      const errorMessage = getErrorMessage(e, "Failed to load roles");
+      setError(errorMessage);
+      toast.error(errorMessage);
       setRoles([]);
     } finally {
       setLoading(false);
@@ -65,9 +75,14 @@ const RolesPage = () => {
   const fetchUsers = async () => {
     try {
       const res = await externalApiClient.get("/users");
-      setUsers(res.data.users);
+      // Handle wrapped response format: { users: [...] } or direct array
+      const usersData =
+        res.data?.users || (Array.isArray(res.data) ? res.data : []);
+      setUsers(usersData);
     } catch (e) {
       console.error("Failed to load users", e);
+      // Don't show toast for users fetch failure - it's not critical
+      setUsers([]);
     }
   };
 
@@ -95,7 +110,7 @@ const RolesPage = () => {
       name: "",
       code: "",
       description: "",
-      is_active: 1,
+      is_active: "Y",
       permissions: {},
     });
     setError("");
@@ -107,7 +122,7 @@ const RolesPage = () => {
       name: "",
       code: "",
       description: "",
-      is_active: 1,
+      is_active: "Y",
       permissions: {},
     });
     setError("");
@@ -117,7 +132,7 @@ const RolesPage = () => {
     const { name, value } = e.target;
     setNewRole((prev) => ({
       ...prev,
-      [name]: name === "is_active" ? parseInt(value) : value,
+      [name]: value,
     }));
   };
 
@@ -143,11 +158,16 @@ const RolesPage = () => {
       return;
     }
     try {
-      const res = await apiClient.post("/api/roles", {
-        ...newRole,
+      // Exclude organization_id and org_id from the payload
+      const { organization_id, org_id, ...roleData } = newRole;
+      const cleanRoleData = {
         name: newRole.name.trim(),
         code: newRole.code.trim(),
-      });
+        description: roleData.description || "",
+        is_active: roleData.is_active ?? "Y",
+        permissions: roleData.permissions || {},
+      };
+      const res = await apiClient.post("/api/roles", cleanRoleData);
       console.log("Add role response:", res.data);
       toast.success("Role created successfully!");
       handleCancelNew();
@@ -155,17 +175,15 @@ const RolesPage = () => {
       await fetchRoles();
     } catch (error) {
       console.error("Error creating role:", error);
-      const errorMsg =
-        error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        "Failed to create role";
+      const errorMsg = getErrorMessage(error, "Failed to create role");
       setError(errorMsg);
       toast.error(errorMsg);
     }
   };
 
   const handleEdit = (role) => {
-    setEditingId(role.id);
+    const roleIdentifier = role.id || role.roleid;
+    setEditingId(String(roleIdentifier));
     setDraftRole({ ...role });
     setError("");
   };
@@ -178,7 +196,20 @@ const RolesPage = () => {
 
   const handleSaveEdit = async (role) => {
     try {
-      const res = await apiClient.patch(`/api/roles/${role.id}`, draftRole);
+      // Exclude organization_id and org_id from the payload
+      const { organization_id, org_id, ...roleData } = draftRole;
+      const cleanRoleData = {
+        name: roleData.name || "",
+        code: roleData.code || "",
+        description: roleData.description || "",
+        is_active: roleData.is_active ?? "Y",
+        permissions: roleData.permissions || {},
+      };
+      const roleIdentifier = role.id || role.roleid;
+      const res = await apiClient.patch(
+        `/api/roles/${roleIdentifier}`,
+        cleanRoleData
+      );
       console.log("Update role response:", res.data);
       toast.success("Role updated successfully!");
       handleCancelEdit();
@@ -186,10 +217,7 @@ const RolesPage = () => {
       await fetchRoles();
     } catch (error) {
       console.error("Error updating role:", error);
-      const errorMsg =
-        error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        "Failed to update role";
+      const errorMsg = getErrorMessage(error, "Failed to update role");
       setError(errorMsg);
       toast.error(errorMsg);
     }
@@ -198,15 +226,13 @@ const RolesPage = () => {
   const handleDelete = async (role) => {
     if (!confirm(`Are you sure you want to delete role ${role.name}?`)) return;
     try {
-      await apiClient.delete(`/api/roles/${role.id}`);
+      const roleIdentifier = role.id || role.roleid;
+      await apiClient.delete(`/api/roles/${roleIdentifier}`);
       toast.success("Role deleted successfully!");
       await fetchRoles();
     } catch (error) {
       console.error("Error deleting role:", error);
-      const errorMsg =
-        error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        "Failed to delete role";
+      const errorMsg = getErrorMessage(error, "Failed to delete role");
       toast.error(errorMsg);
     }
   };
@@ -264,6 +290,7 @@ const RolesPage = () => {
                 </Label>
                 <Input
                   id="name"
+                  name="name"
                   placeholder="Enter role name"
                   value={newRole?.name}
                   onChange={handleNewRoleChange}
@@ -275,6 +302,7 @@ const RolesPage = () => {
                 </Label>
                 <Input
                   id="code"
+                  name="code"
                   value={newRole.code}
                   onChange={handleNewRoleChange}
                   placeholder="CUSTOM_ROLE"
@@ -286,6 +314,7 @@ const RolesPage = () => {
                 </Label>
                 <Textarea
                   id="description"
+                  name="description"
                   placeholder="Enter role description"
                   value={newRole.description}
                   onChange={handleNewRoleChange}
@@ -298,18 +327,20 @@ const RolesPage = () => {
                   Status
                 </Label>
                 <Select
+                  value={newRole.is_active || "Y"}
                   onValueChange={(value) =>
-                    handleNewRoleChange({
-                      target: { name: "is_active", value: value },
-                    })
+                    setNewRole((prev) => ({
+                      ...prev,
+                      is_active: value,
+                    }))
                   }
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={1}>Active</SelectItem>
-                    <SelectItem value={0}>Inactive</SelectItem>
+                    <SelectItem value="Y">Active</SelectItem>
+                    <SelectItem value="N">Inactive</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -349,143 +380,156 @@ const RolesPage = () => {
 
         {loading ? (
           <div>Loading roles...</div>
+        ) : !Array.isArray(roles) || roles.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            No roles found. Click "Add New Role" to create one.
+          </div>
         ) : (
           <div className="space-y-3">
-            {roles.map((role) => (
-              <div key={role.id} className="border rounded p-4 bg-white">
-                {editingId === role.id ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label>Name</Label>
-                      <Input
-                        value={draftRole.name || ""}
-                        onChange={(e) =>
-                          setDraftRole({ ...draftRole, name: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div>
-                      <Label>Code</Label>
-                      <Input
-                        value={draftRole.code || ""}
-                        onChange={(e) =>
-                          setDraftRole({ ...draftRole, code: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <Label>Description</Label>
-                      <textarea
-                        value={draftRole.description || ""}
-                        onChange={(e) =>
-                          setDraftRole({
-                            ...draftRole,
-                            description: e.target.value,
-                          })
-                        }
-                        className="w-full p-2 border rounded"
-                        rows={3}
-                      />
-                    </div>
-                    <div>
-                      <Label>Status</Label>
-                      <select
-                        value={draftRole.is_active ?? 1}
-                        onChange={(e) =>
-                          setDraftRole({
-                            ...draftRole,
-                            is_active: parseInt(e.target.value),
-                          })
-                        }
-                        className="w-full p-2 border rounded"
-                      >
-                        <option value={1}>Active</option>
-                        <option value={0}>Inactive</option>
-                      </select>
-                    </div>
-                    <div className="flex gap-2 mt-3">
-                      <Button size="sm" onClick={() => handleSaveEdit(role)}>
-                        Save
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={handleCancelEdit}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <div className="flex justify-between items-start">
+            {roles.map((role) => {
+              const roleIdentifier = role.id || role.roleid;
+              const roleIdString = String(roleIdentifier);
+              return (
+                <div key={roleIdString} className="border rounded p-4 bg-white">
+                  {editingId === roleIdString ? (
+                    <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <h3 className="font-semibold text-lg">{role.name}</h3>
-                        <p className="text-sm text-gray-600">
-                          Code: {role.code}
-                        </p>
-                        {role.description && (
-                          <p className="text-sm text-gray-600 mt-1">
-                            {role.description}
-                          </p>
-                        )}
-                        {role.permissions &&
-                          Object.keys(role.permissions).length > 0 && (
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {Object.entries(role.permissions)
-                                .filter(([_, value]) => value)
-                                .map(([key]) => (
-                                  <Badge key={key} variant="outline">
-                                    {key.replace(/_/g, " ")}
-                                  </Badge>
-                                ))}
-                            </div>
-                          )}
-                        <p className="text-sm text-gray-600 mt-2">
-                          Status:{" "}
-                          <span
-                            className={
-                              role.is_active === 1
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }
-                          >
-                            {role.is_active === 1 ? "Active" : "Inactive"}
-                          </span>
-                        </p>
+                        <Label>Name</Label>
+                        <Input
+                          value={draftRole.name || ""}
+                          onChange={(e) =>
+                            setDraftRole({ ...draftRole, name: e.target.value })
+                          }
+                        />
                       </div>
-                      <div className="flex gap-2">
+                      <div>
+                        <Label>Code</Label>
+                        <Input
+                          value={draftRole.code || ""}
+                          onChange={(e) =>
+                            setDraftRole({ ...draftRole, code: e.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <Label>Description</Label>
+                        <textarea
+                          value={draftRole.description || ""}
+                          onChange={(e) =>
+                            setDraftRole({
+                              ...draftRole,
+                              description: e.target.value,
+                            })
+                          }
+                          className="w-full p-2 border rounded"
+                          rows={3}
+                        />
+                      </div>
+                      <div>
+                        <Label>Status</Label>
+                        <select
+                          value={draftRole.is_active ?? "Y"}
+                          onChange={(e) =>
+                            setDraftRole({
+                              ...draftRole,
+                              is_active: e.target.value,
+                            })
+                          }
+                          className="w-full p-2 border rounded"
+                        >
+                          <option value="Y">Active</option>
+                          <option value="N">Inactive</option>
+                        </select>
+                      </div>
+                      <div className="flex gap-2 mt-3">
+                        <Button size="sm" onClick={() => handleSaveEdit(role)}>
+                          Save
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleViewUsers(role.id)}
+                          onClick={handleCancelEdit}
                         >
-                          {viewingUsersId === role.id ? "Hide" : "View"} Users
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleEdit(role)}
-                          disabled={adding}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleDelete(role)}
-                          disabled={adding}
-                        >
-                          Delete
+                          Cancel
                         </Button>
                       </div>
                     </div>
-                    {viewingUsersId === role.id && (
-                      <RoleUsersList roleId={role.id} />
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
+                  ) : (
+                    <div>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-semibold text-lg">{role.name}</h3>
+                          <p className="text-sm text-gray-600">
+                            Code: {role.code}
+                          </p>
+                          {role.description && (
+                            <p className="text-sm text-gray-600 mt-1">
+                              {role.description}
+                            </p>
+                          )}
+                          {role.permissions &&
+                            Object.keys(role.permissions).length > 0 && (
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {Object.entries(role.permissions)
+                                  .filter(([_, value]) => value)
+                                  .map(([key]) => (
+                                    <Badge key={key} variant="outline">
+                                      {key.replace(/_/g, " ")}
+                                    </Badge>
+                                  ))}
+                              </div>
+                            )}
+                          <p className="text-sm text-gray-600 mt-2">
+                            Status:{" "}
+                            <span
+                              className={
+                                role.is_active === "Y" || role.is_active === "y"
+                                  ? "text-green-600"
+                                  : "text-red-600"
+                              }
+                            >
+                              {role.is_active === "Y" || role.is_active === "y"
+                                ? "Active"
+                                : "Inactive"}
+                            </span>
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleViewUsers(roleIdentifier)}
+                          >
+                            {viewingUsersId === roleIdentifier
+                              ? "Hide"
+                              : "View"}{" "}
+                            Users
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleEdit(role)}
+                            disabled={adding}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleDelete(role)}
+                            disabled={adding}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+                      {viewingUsersId === roleIdentifier && (
+                        <RoleUsersList roleId={roleIdentifier} />
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -506,7 +550,16 @@ const RoleUsersList = ({ roleId }) => {
     try {
       setLoading(true);
       const res = await externalApiClient.get(`/roles/${roleId}/users`);
-      setRoleUsers(res.data.users);
+      // Handle wrapped response format: { users: [...] } or direct array
+      let usersData = [];
+      if (Array.isArray(res.data)) {
+        usersData = res.data;
+      } else if (res.data?.users && Array.isArray(res.data.users)) {
+        usersData = res.data.users;
+      } else if (res.data?.data && Array.isArray(res.data.data)) {
+        usersData = res.data.data;
+      }
+      setRoleUsers(usersData);
     } catch (e) {
       console.error("Failed to load role users", e);
       setRoleUsers([]);

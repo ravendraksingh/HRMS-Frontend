@@ -1,0 +1,79 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
+
+export default function AttendanceLayout({ children }) {
+  const pathname = usePathname();
+
+  const tabs = [
+    {
+      name: "Today's Attendance",
+      href: "/ess/attendance/today",
+      value: "today",
+    },
+    {
+      name: "Calendar",
+      href: "/ess/attendance/calendar",
+      value: "calendar",
+    },
+    {
+      name: "Corrections",
+      href: "/ess/attendance/correction",
+      value: "corrections",
+    },
+    {
+      name: "History",
+      href: "/ess/attendance/history",
+      value: "history",
+    },
+    {
+      name: "Statistics",
+      href: "/ess/attendance/statistics",
+      value: "statistics",
+    },
+  ];
+
+  const isActive = (href) => {
+    if (href === "/ess/attendance/today") {
+      return pathname === "/ess/attendance/today" || pathname === "/ess/attendance";
+    }
+    if (href === "/ess/attendance/calendar") {
+      return pathname === "/ess/attendance/calendar";
+    }
+    return pathname?.startsWith(href);
+  };
+
+  return (
+    <div className="container mx-auto max-w-7xl p-4 md:p-6">
+      {/* <div className="mb-6">
+        <h1 className="text-3xl font-bold mb-2">My Attendance</h1>
+        <p className="text-gray-600">Track and manage your attendance</p>
+      </div> */}
+
+      {/* Tab Navigation */}
+      <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] mb-6">
+        <div className="inline-flex w-auto min-w-max sm:w-fit md:w-full md:max-w-4xl border-b">
+          {tabs.map((tab) => (
+            <Link
+              key={tab.value}
+              href={tab.href}
+              className={cn(
+                "text-xs sm:text-sm px-2 sm:px-3 py-3 whitespace-nowrap flex-shrink-0 border-b-2 transition-colors",
+                isActive(tab.href)
+                  ? "border-primary text-primary font-medium"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground"
+              )}
+            >
+              {tab.name}
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* Page Content */}
+      <div className="w-full">{children}</div>
+    </div>
+  );
+}

@@ -16,12 +16,12 @@ import {
 import { toast } from "sonner";
 import { externalApiClient } from "@/app/services/externalApiClient";
 import { Badge } from "@/components/ui/badge";
-import { useAuth } from "@/components/auth/AuthContext";
 import { UserPlus } from "lucide-react";
 import OrganizationInfoCard from "@/components/common/OrganizationInfoCard";
+import { useAuth } from "@/components/common/AuthContext";
+import { getErrorMessage } from "@/lib/emsUtil";
 
-const UsersPage = () => {
-  const { user } = useAuth();
+const ManageUsersPage = () => {
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -32,31 +32,39 @@ const UsersPage = () => {
   const [newUser, setNewUser] = useState({
     username: "",
     password: "",
-    employee_id: "",
-    is_active: 1,
+    empid: "",
+    is_active: "Y",
     role_ids: [],
   });
   const [draftUser, setDraftUser] = useState({});
+  const { user } = useAuth()
 
   useEffect(() => {
-    if (user?.user_id) {
+    if (user) {
       fetchUsers();
       fetchRoles();
       fetchEmployees();
+    } else {
+      // If no user, stop loading to prevent infinite loading state
+      setLoading(false);
     }
-  }, [user?.user_id]);
+  }, [user]);
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
       const res = await externalApiClient.get("/users");
-      let users = res.data.users;
-      setUsers(users);
+      const usersData = res.data?.users;
+      setUsers(usersData);
       setError("");
     } catch (e) {
       console.error("Error fetching users:", e);
-      setError("Error fetching users");
-      toast.error("Failed to load users");
+      const errorMessage =
+        e?.response?.data?.error ||
+        e?.response?.data?.message ||
+        "Error fetching users";
+      setError(errorMessage);
+      toast.error(`Failed to load users: ${errorMessage}`);
       setUsers([]);
     } finally {
       setLoading(false);
@@ -66,54 +74,66 @@ const UsersPage = () => {
   const fetchRoles = async () => {
     try {
       const res = await externalApiClient.get("/roles");
-      setRoles(res.data.roles);
+      const rolesData = res.data?.roles;
+      console.log("Roles data:", rolesData);
+      setRoles(rolesData);
     } catch (e) {
       console.error("Failed to load roles", e);
+      const errorMessage =
+        e?.response?.data?.error ||
+        e?.response?.data?.message ||
+        "Failed to load roles";
+      toast.error(errorMessage);
+      setRoles([]);
     }
   };
 
   const fetchEmployees = async () => {
     try {
-      const res = await externalApiClient.get("/admin/all-employees");
-      setEmployees(res.data.employees);
+      const res = await externalApiClient.get("/employees");
+      // Handle wrapped response format: { employees: [...] } or direct array
+      const employeesData =
+        res.data?.employees || (Array.isArray(res.data) ? res.data : []);
+      setEmployees(employeesData);
     } catch (e) {
       console.error("Failed to load employees", e);
+      const errorMessage =
+        e?.response?.data?.error ||
+        e?.response?.data?.message ||
+        "Failed to load employees";
+      // Don't show toast for employees fetch failure - it's not critical
+      // The employee dropdown will just be empty
       setEmployees([]); // Ensure it's always an array even on error
     }
   };
 
   const handleAddNew = () => {
     setAdding(true);
-    // Find default user role and include it by default
-    const defaultUserRole = roles.find(
-      (r) =>
-        r.code?.toUpperCase() === "USER" || r.name?.toLowerCase() === "user"
-    );
-
+    const defaultUserRole = roles.find((r) => r.roleid === "USER");
+    console.log("Default user role:", defaultUserRole);
     setNewUser({
       username: "",
       password: "",
-      employee_id: "",
-      is_active: 1,
-      role_ids: defaultUserRole ? [defaultUserRole.id] : [],
+      empid: "",
+      is_active: "Y",
     });
     setError("");
   };
 
   const handleCancelNew = () => {
     setAdding(false);
-    // Find default user role and include it by default
-    const defaultUserRole = roles.find(
-      (r) =>
-        r.code?.toUpperCase() === "USER" || r.name?.toLowerCase() === "user"
-    );
+    // Find default user role and include it by default - ONLY USER role
+    const defaultUserRole = roles.find((r) => {
+      return r.roleid === "USER";
+    });
 
+    // Reset to only USER role selected
     setNewUser({
       username: "",
       password: "",
-      employee_id: "",
-      is_active: 1,
-      role_ids: defaultUserRole ? [defaultUserRole.id] : [],
+      empid: "",
+      is_active: "Y",
+      role_ids: defaultUserRole ? [defaultUserRole.id] : [], // Only USER role, no other roles
     });
     setError("");
   };
@@ -122,11 +142,31 @@ const UsersPage = () => {
     const { name, value } = e.target;
     setNewUser((prev) => ({
       ...prev,
-      [name]: name === "is_active" ? parseInt(value) : value,
+      [name]: value,
     }));
   };
 
   const handleRoleToggle = (roleId) => {
+    // Find the role to check its type
+    const role = roles.find((r) => r.roleid === roleId);
+    if (!role) return;
+
+    const isAdmin = role.roleid === "ADMIN";
+    const isCxo = role.roleid === "CXO";
+    const isUserRole = role.roleid === "USER";
+
+    // Prevent adding ADMIN or CXO roles
+    if (isAdmin || isCxo) {
+      toast.error(`${role.role_name} role cannot be assigned`);
+      return;
+    }
+
+    // Prevent unchecking USER role
+    if (isUserRole && newUser.role_ids?.includes(roleId)) {
+      toast.error("USER role cannot be removed");
+      return;
+    }
+
     setNewUser((prev) => {
       const roleIds = prev.role_ids || [];
       const newRoleIds = roleIds.includes(roleId)
@@ -137,51 +177,27 @@ const UsersPage = () => {
   };
 
   const handleSaveNew = async () => {
-    if (!newUser.username || !newUser.password || !newUser.employee_id) {
-      setError("Username, password, and employee are required");
-      toast.error("Username, password, and employee are required");
-      return;
-    }
-
-    // Validate that at least one role is selected
-    if (!newUser.role_ids || newUser.role_ids.length === 0) {
-      setError("At least one role is required");
-      toast.error("Please select at least one role");
+    if (!newUser.username || !newUser.password || !newUser.empid) {
+      setError("Username, password, and Employee ID are required");
+      toast.error("Username, password, and Employee ID are required");
       return;
     }
 
     try {
-      // Find the default "user" role (code: "USER" or name: "User")
-      const defaultUserRole = roles.find(
-        (r) =>
-          r.code?.toUpperCase() === "USER" || r.name?.toLowerCase() === "user"
-      );
-
-      // Ensure default user role is included in role_ids
-      let roleIds = [...(newUser.role_ids || [])];
-      if (defaultUserRole && !roleIds.includes(defaultUserRole.id)) {
-        roleIds.push(defaultUserRole.id);
-      }
-
-      const res = await externalApiClient.post("/users", {
-        ...newUser,
-        role_ids: roleIds,
-        organization_id: user?.org_id || user?.organization_id,
-      });
+      const res = await externalApiClient.post("/users", newUser);
       toast.success("User created successfully!");
       handleCancelNew();
       setError("");
       fetchUsers();
     } catch (error) {
-      const errorMsg =
-        error?.response?.data?.message || "Failed to create user";
+      const errorMsg = getErrorMessage(error, "Failed to create user");
       setError(errorMsg);
       toast.error(errorMsg);
     }
   };
 
   const handleEdit = (user) => {
-    setEditingId(user.id);
+    setEditingId(user.empid);
     setDraftUser({ ...user });
     setError("");
   };
@@ -195,7 +211,7 @@ const UsersPage = () => {
   const handleSaveEdit = async (userToEdit) => {
     try {
       const res = await externalApiClient.patch(
-        `/users/${userToEdit.id}`,
+        `/users/${userToEdit.empid}`,
         draftUser
       );
       toast.success("User updated successfully!");
@@ -204,8 +220,7 @@ const UsersPage = () => {
       // Refresh users list to get updated data from server
       await fetchUsers();
     } catch (error) {
-      const errorMsg =
-        error?.response?.data?.message || "Failed to update user";
+      const errorMsg = getErrorMessage(error, "Failed to update user");
       setError(errorMsg);
       toast.error(errorMsg);
     }
@@ -217,21 +232,33 @@ const UsersPage = () => {
     )
       return;
     try {
-      await externalApiClient.delete(`/users/${userToDelete.id}`);
-      setUsers((prev) => prev.filter((u) => u.id !== userToDelete.id));
+      await externalApiClient.delete(`/users/${userToDelete.empid}`);
+      setUsers((prev) => prev.filter((u) => u.empid !== userToDelete.empid));
       toast.success("User deleted successfully!");
     } catch (error) {
-      const errorMsg =
-        error?.response?.data?.message || "Failed to delete user";
+      const errorMsg = getErrorMessage(error, "Failed to delete user");
       toast.error(errorMsg);
     }
   };
 
-  const handleAssignRole = async (userId, roleId) => {
+  const handleAssignRole = async (empId, roleId) => {
+    // Find the role to check if it's ADMIN or CXO
+    const role = roles.find((r) => r.roleid === roleId);
+    if (role) {
+      const isAdmin = role.roleid === "ADMIN";
+      const isCxo = role.roleid === "CXO";
+
+      if (isAdmin || isCxo) {
+        toast.error(`${role.name} role cannot be assigned`);
+        return;
+      }
+    }
+
     try {
-      console.log("Assigning role:", { userId, roleId });
-      const res = await externalApiClient.post(`/users/${userId}/roles`, {
-        role_id: roleId,
+      console.log("Assigning role:", { empId, roleId });
+      const res = await externalApiClient.post(`/users/${empId}/roles`, {
+        roleid: roleId,
+        assignedBy: user.empid,
       });
       console.log("Assign role response:", res.data);
       toast.success("Role assigned successfully!");
@@ -239,10 +266,7 @@ const UsersPage = () => {
       await fetchUsers();
     } catch (error) {
       console.error("Error assigning role:", error);
-      const errorMsg =
-        error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        "Failed to assign role";
+      const errorMsg = getErrorMessage(error, "Failed to assign role");
       toast.error(errorMsg);
     }
   };
@@ -250,7 +274,7 @@ const UsersPage = () => {
   const handleRemoveRole = async (userId, roleIdentifier) => {
     if (!confirm("Are you sure you want to remove this role?")) return;
     try {
-      // roleIdentifier could be a role_code (e.g., "HR_MANAGER"), role_id, or role id
+      // roleIdentifier could be a roleid, role_id, or role id
       // We need to find the actual role ID from the roles array
       let actualRoleId = roleIdentifier;
 
@@ -296,35 +320,26 @@ const UsersPage = () => {
     }
   };
 
-  const getEmployeeName = (employeeId) => {
-    if (!employeeId) return "N/A";
+  const getEmployeeId = (employeeId) => {
+    if (!employeeId) return employeeId || "N/A";
     // Ensure employees is an array before calling find
     if (!Array.isArray(employees) || employees.length === 0) {
-      return `Employee ${employeeId}`;
+      return employeeId;
     }
     // Convert employeeId to both string and number for comparison
     const employeeIdStr = String(employeeId);
     const employeeIdNum = Number(employeeId);
 
-    const employee = employees.find(
-      (e) =>
-        String(e.id) === employeeIdStr ||
-        Number(e.id) === employeeIdNum ||
-        String(e.employee_id) === employeeIdStr ||
-        Number(e.employee_id) === employeeIdNum ||
-        String(e.employee_code) === employeeIdStr
-    );
+    // Use empid only
+    const employee = employees.find((e) => String(e.empid) === employeeIdStr);
 
     if (employee) {
-      const name = employee.name || employee.employee_name;
-      // Show employee_code instead of employee_id for display purposes
-      const code = employee.employee_code || employee.code;
-      return name
-        ? `${name}${code ? ` (${code})` : ""}`
-        : `Employee ${employeeId}`;
+      // Return empid if available, otherwise return the employeeId passed in
+      return employee.empid || employeeId;
     }
 
-    return `Employee ${employeeId}`;
+    // Return the employeeId if employee not found in list
+    return employeeId;
   };
 
   return (
@@ -352,65 +367,70 @@ const UsersPage = () => {
         </div>
 
         {adding && (
-          <Card className="mb-4">
+          <Card key="add-user-form" className="mb-4">
             <CardHeader>
               <CardTitle>Create New User</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="username" className="mb-1">
+                  <Label htmlFor="new-username" className="mb-1">
                     Username *
                   </Label>
                   <Input
                     type="text"
                     name="username"
-                    id="username"
-                    value={newUser.username}
+                    id="new-username"
+                    value={newUser.username || ""}
                     onChange={handleNewUserChange}
                     placeholder="Enter username"
+                    autoComplete="off"
                     required
                   />
                 </div>
                 <div>
-                  <Label htmlFor="password" className="mb-1">
+                  <Label htmlFor="new-password" className="mb-1">
                     Password *
                   </Label>
                   <Input
                     type="password"
                     name="password"
-                    id="password"
-                    value={newUser.password}
+                    id="new-password"
+                    value={newUser.password || ""}
                     onChange={handleNewUserChange}
                     placeholder="Enter password"
+                    autoComplete="new-password"
                     required
                   />
                 </div>
                 <div>
-                  <Label htmlFor="employee_id" className="mb-1">
-                    Employee *
+                  <Label htmlFor="new-employee_id" className="mb-1">
+                    Employee ID *
                   </Label>
                   <Select
-                    value={newUser.employee_id || ""}
+                    value={newUser.empid || ""}
                     onValueChange={(value) =>
-                      setNewUser({ ...newUser, employee_id: value })
+                      setNewUser({ ...newUser, empid: value })
                     }
                   >
-                    <SelectTrigger id="employee_id" className="w-full">
+                    <SelectTrigger id="new-employee_id" className="w-full">
                       <SelectValue placeholder="Select Employee" />
                     </SelectTrigger>
                     <SelectContent>
-                      {employees.map((emp) => (
-                        <SelectItem
-                          key={emp.id || emp.employee_id}
-                          value={String(emp.id || emp.employee_id)}
-                        >
-                          {emp.name || emp.employee_name}
-                          {emp.employee_code || emp.code
-                            ? ` (${emp.employee_code || emp.code})`
-                            : ""}
+                      {employees &&
+                      Array.isArray(employees) &&
+                      employees.length > 0 ? (
+                        employees.map((emp) => (
+                          <SelectItem key={emp.empid} value={String(emp.empid)}>
+                            {emp.name}
+                            {emp.empid ? ` (${emp.empid})` : ""}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="__no_employees__" disabled>
+                          No employees available
                         </SelectItem>
-                      ))}
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -419,63 +439,26 @@ const UsersPage = () => {
                     Status
                   </Label>
                   <Select
-                    value={String(newUser.is_active)}
+                    value={newUser.is_active}
                     onValueChange={(value) =>
-                      setNewUser({ ...newUser, is_active: parseInt(value) })
+                      setNewUser({ ...newUser, is_active: value })
                     }
                   >
                     <SelectTrigger id="is_active" className="w-full">
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1">Active</SelectItem>
-                      <SelectItem value="0">Inactive</SelectItem>
+                      <SelectItem value="Y">Active</SelectItem>
+                      <SelectItem value="N">Inactive</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-                <div className="col-span-2">
-                  <Label className="mb-1">
-                    Roles <span className="text-red-500">*</span>
-                  </Label>
-                  <div className="flex flex-wrap gap-3 mt-2">
-                    {roles.map((role) => (
-                      <div
-                        key={role.id}
-                        className="flex items-center space-x-2"
-                      >
-                        <Checkbox
-                          id={`role-${role.id}`}
-                          checked={newUser.role_ids?.includes(role.id)}
-                          onCheckedChange={() => handleRoleToggle(role.id)}
-                        />
-                        <Label
-                          htmlFor={`role-${role.id}`}
-                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                        >
-                          {role.name}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                  {error && error.includes("role") && (
-                    <p className="text-red-500 text-sm mt-1">{error}</p>
-                  )}
-                  {(!newUser.role_ids || newUser.role_ids.length === 0) && (
-                    <p className="text-sm text-gray-500 mt-1">
-                      Please select at least one role
-                    </p>
-                  )}
                 </div>
               </div>
               <div className="flex gap-2 mt-4">
                 <Button
                   onClick={handleSaveNew}
                   disabled={
-                    !newUser.username ||
-                    !newUser.password ||
-                    !newUser.employee_id ||
-                    !newUser.role_ids ||
-                    newUser.role_ids.length === 0
+                    !newUser.username || !newUser.password || !newUser.empid
                   }
                 >
                   Save
@@ -500,20 +483,20 @@ const UsersPage = () => {
           <div className="space-y-3">
             {users &&
               Array.isArray(users) &&
-              users.map((userItem) => (
-                <Card key={userItem.id}>
+              users.map((userItem, index) => (
+                <Card key={userItem.empid || `user-${index}`}>
                   <CardContent className="p-6">
-                    {editingId === userItem.id ? (
+                    {editingId === userItem.empid ? (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <Label
-                            htmlFor={`edit-username-${userItem.id}`}
+                            htmlFor={`edit-username-${userItem.empid}`}
                             className="mb-1"
                           >
                             Username
                           </Label>
                           <Input
-                            id={`edit-username-${userItem.id}`}
+                            id={`edit-username-${userItem.empid}`}
                             value={draftUser.username || ""}
                             onChange={(e) =>
                               setDraftUser({
@@ -526,36 +509,36 @@ const UsersPage = () => {
                         </div>
                         <div>
                           <Label
-                            htmlFor={`edit-status-${userItem.id}`}
+                            htmlFor={`edit-status-${userItem.empid}`}
                             className="mb-1"
                           >
                             Status
                           </Label>
                           <Select
-                            value={String(draftUser.is_active ?? 1)}
+                            value={draftUser.is_active ?? "Y"}
                             onValueChange={(value) =>
                               setDraftUser({
                                 ...draftUser,
-                                is_active: parseInt(value),
+                                is_active: value,
                               })
                             }
                           >
                             <SelectTrigger
-                              id={`edit-status-${userItem.id}`}
+                              id={`edit-status-${userItem.empid}`}
                               className="w-full"
                             >
                               <SelectValue placeholder="Select status" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="1">Active</SelectItem>
-                              <SelectItem value="0">Inactive</SelectItem>
+                              <SelectItem value="Y">Active</SelectItem>
+                              <SelectItem value="N">Inactive</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                         <div className="flex gap-2 mt-4 md:col-span-2">
                           <Button
                             size="sm"
-                            onClick={() => handleSaveEdit(userItem)}
+                            onClick={() => handleSaveEdit(userItem.empid)}
                           >
                             Save
                           </Button>
@@ -573,40 +556,31 @@ const UsersPage = () => {
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
                             <h3 className="font-semibold text-lg">
-                              {userItem.username}
+                              Username: {userItem.username}
                             </h3>
                             <p className="text-sm text-gray-600 mt-1">
-                              Employee: {getEmployeeName(userItem.employee_id)}
+                              Employee ID: {userItem.empid} Name: {userItem.employee_name}
                             </p>
                             <div className="flex gap-2 mt-2 flex-wrap">
                               {userItem.roles &&
                               Array.isArray(userItem.roles) &&
                               userItem.roles.length > 0 ? (
                                 userItem.roles.map((role, index) => {
-                                  // Handle new format: role_name and role_code
-                                  // Also support old format: name, code, id for backward compatibility
-                                  const roleName =
-                                    role.role_name || role.name || role.code;
-                                  const roleCode = role.role_code || role.code;
-                                  const roleId = role.id || role.role_id;
+                                  const roleName = role.role_name;
+                                  const roleId = role.roleid;
 
                                   return (
                                     <Badge
-                                      key={
-                                        roleCode ||
-                                        roleId ||
-                                        role.code ||
-                                        `role-${userItem.id}-${index}`
-                                      }
+                                      key={roleId}
                                       variant="secondary"
                                       className="text-sm"
                                     >
-                                      {roleName || roleCode || "Unknown Role"}
+                                      {roleName || roleId || "Unknown Role"}
                                       <button
                                         onClick={() =>
                                           handleRemoveRole(
-                                            userItem.id,
-                                            roleCode || roleId || role.code
+                                            userItem.empid,
+                                            roleId
                                           )
                                         }
                                         className="ml-2 text-xs hover:text-red-600 font-bold"
@@ -627,20 +601,20 @@ const UsersPage = () => {
                               Status:{" "}
                               <Badge
                                 variant={
-                                  userItem.is_active === 1 ||
-                                  userItem.is_active === true
+                                  userItem.is_active === "Y" ||
+                                  userItem.is_active === "y"
                                     ? "default"
                                     : "secondary"
                                 }
                                 className={
-                                  userItem.is_active === 1 ||
-                                  userItem.is_active === true
+                                  userItem.is_active === "Y" ||
+                                  userItem.is_active === "y"
                                     ? "bg-green-500 hover:bg-green-600 text-white"
                                     : ""
                                 }
                               >
-                                {userItem.is_active === 1 ||
-                                userItem.is_active === true
+                                {userItem.is_active === "Y" ||
+                                userItem.is_active === "y"
                                   ? "Active"
                                   : "Inactive"}
                               </Badge>
@@ -672,69 +646,63 @@ const UsersPage = () => {
                           <div className="flex flex-wrap gap-2">
                             {roles
                               .filter((role) => {
+                                // Only show active roles
+                                const isActive =
+                                  role.is_active === "Y" ||
+                                  role.is_active === "y";
+                                if (!isActive) {
+                                  return false; // Exclude inactive roles
+                                }
+
+                                // Always filter out ADMIN and CXO roles - they should never appear
+                                const roleId = role.roleid?.toUpperCase() || "";
+                                const isAdmin = roleId === "ADMIN";
+                                const isCxo = roleId === "CXO";
+                                if (isAdmin || isCxo) {
+                                  return false; // Always exclude ADMIN and CXO
+                                }
+
+                                // If user has no roles assigned, show all active roles (except ADMIN/CXO)
                                 if (
                                   !Array.isArray(userItem.roles) ||
                                   userItem.roles.length === 0
                                 ) {
-                                  return true; // No roles assigned, show all
+                                  return true;
                                 }
-                                // Check if role is already assigned
-                                // Handle new format (role_name, role_code) and old format (name, code, id)
-                                return !userItem.roles.some((ur) => {
-                                  const urCode = ur.role_code || ur.code;
-                                  const urId = ur.id || ur.role_id;
-                                  const roleCode = role.code;
-                                  const roleId = role.id;
 
-                                  // Match by code (primary method for new format)
-                                  if (urCode && roleCode) {
-                                    if (
-                                      String(urCode).toUpperCase() ===
-                                      String(roleCode).toUpperCase()
-                                    ) {
-                                      return true;
-                                    }
+                                // Only show roles that are NOT already assigned to this user
+                                const isAlreadyAssigned = userItem.roles.some(
+                                  (ur) => {
+                                    return ur.roleid === role.roleid;
                                   }
-                                  // Match by ID (for backward compatibility)
-                                  if (urId && roleId) {
-                                    if (
-                                      String(urId) === String(roleId) ||
-                                      Number(urId) === Number(roleId)
-                                    ) {
-                                      return true;
-                                    }
-                                  }
-                                  // Cross-match: ur.role_code with role.id or ur.code with role.code
-                                  if (
-                                    urCode &&
-                                    roleId &&
-                                    String(urCode).toUpperCase() ===
-                                      String(roleId).toUpperCase()
-                                  ) {
-                                    return true;
-                                  }
-                                  if (
-                                    urId &&
-                                    roleCode &&
-                                    String(urId) === String(roleCode)
-                                  ) {
-                                    return true;
-                                  }
-                                  return false;
-                                });
+                                );
+
+                                // Return false if already assigned (so it's filtered out)
+                                return !isAlreadyAssigned;
                               })
-                              .map((role) => (
-                                <Button
-                                  key={role.id || role.code}
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() =>
-                                    handleAssignRole(userItem.id, role.id)
-                                  }
-                                >
-                                  + {role.name || role.code}
-                                </Button>
-                              ))}
+                              .map((role) => {
+                                const roleId = role.roleid;
+                                const isAdmin = roleId === "ADMIN";
+                                const isCxo = roleId === "CXO";
+                                const isDisabled = isAdmin || isCxo;
+
+                                return (
+                                  <Button
+                                    key={role.roleid}
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={isDisabled}
+                                    onClick={() =>
+                                      handleAssignRole(
+                                        userItem.empid,
+                                        role.roleid
+                                      )
+                                    }
+                                  >
+                                    + {role.name}
+                                  </Button>
+                                );
+                              })}
                             {roles.filter((role) => {
                               if (
                                 !Array.isArray(userItem.roles) ||
@@ -743,43 +711,7 @@ const UsersPage = () => {
                                 return true;
                               }
                               return !userItem.roles.some((ur) => {
-                                const urCode = ur.role_code || ur.code;
-                                const urId = ur.id || ur.role_id;
-                                const roleCode = role.code;
-                                const roleId = role.id;
-
-                                if (urCode && roleCode) {
-                                  if (
-                                    String(urCode).toUpperCase() ===
-                                    String(roleCode).toUpperCase()
-                                  ) {
-                                    return true;
-                                  }
-                                }
-                                if (urId && roleId) {
-                                  if (
-                                    String(urId) === String(roleId) ||
-                                    Number(urId) === Number(roleId)
-                                  ) {
-                                    return true;
-                                  }
-                                }
-                                if (
-                                  urCode &&
-                                  roleId &&
-                                  String(urCode).toUpperCase() ===
-                                    String(roleId).toUpperCase()
-                                ) {
-                                  return true;
-                                }
-                                if (
-                                  urId &&
-                                  roleCode &&
-                                  String(urId) === String(roleCode)
-                                ) {
-                                  return true;
-                                }
-                                return false;
+                                return ur.roleid === role.roleid;
                               });
                             }).length === 0 && (
                               <span className="text-sm text-gray-400">
@@ -800,4 +732,4 @@ const UsersPage = () => {
   );
 };
 
-export default UsersPage;
+export default ManageUsersPage;

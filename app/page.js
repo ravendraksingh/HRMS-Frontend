@@ -1,9 +1,9 @@
 "use client";
 
-import { useAuth } from "@/components/auth/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { useAuth } from "@/components/common/AuthContext";
 import {
   LayoutDashboard,
   UserCircle,
@@ -17,24 +17,59 @@ import {
 
 export default function Home() {
   const { user } = useAuth();
-
+  console.log("user in Home", user);
   const quickLinks = [
-    { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, description: "View your dashboard" },
-    { title: "Profile", url: "/profile", icon: UserCircle, description: "View your profile" },
-    { title: "Attendance", url: "/attendance", icon: CalendarClock, description: "Mark attendance" },
-    { title: "Leave", url: "/leave", icon: Calendar, description: "Apply for leave" },
-    { title: "Salary", url: "/salary", icon: BadgeIndianRupee, description: "View salary details" },
-    { title: "Personal Details", url: "/personal-details", icon: UserRound, description: "Update personal information" },
+    {
+      title: "Dashboard",
+      url: "/ess/employee-dashboard",
+      icon: LayoutDashboard,
+      description: "View your dashboard",
+    },
+    {
+      title: "Profile",
+      url: "/ess/profile",
+      icon: UserCircle,
+      description: "View your profile",
+    },
+    {
+      title: "Attendance",
+      url: "/ess/attendance",
+      icon: CalendarClock,
+      description: "Mark attendance",
+    },
+    {
+      title: "Leave",
+      url: "/ess/leave",
+      icon: Calendar,
+      description: "Apply for leave",
+    },
+    {
+      title: "Salary",
+      url: "/ess/salary",
+      icon: BadgeIndianRupee,
+      description: "View salary details",
+    },
+    {
+      title: "Personal Details",
+      url: "/ess/personal-details",
+      icon: UserRound,
+      description: "Update personal information",
+    },
   ];
 
   return (
     <div className="container mx-auto max-w-7xl p-6">
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">
-          Welcome{user?.employee_name || user?.name ? `, ${user.employee_name || user.name}` : ""}!
+          Welcome
+          {user?.employee_name || user?.name
+            ? `, ${user.employee_name || user.name}`
+            : ""}
+          !
         </h1>
         <p className="text-gray-600 text-lg">
-          Manage your work, track attendance, and access important information from one place.
+          Manage your work, track attendance, and access important information
+          from one place.
         </p>
       </div>
 
@@ -69,20 +104,32 @@ export default function Home() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              <Button asChild variant="outline" className="w-full justify-start">
-                <Link href="/attendance">
+              <Button
+                asChild
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <Link href="/ess/attendance">
                   <CalendarClock className="mr-2 h-4 w-4" />
                   Mark Today's Attendance
                 </Link>
               </Button>
-              <Button asChild variant="outline" className="w-full justify-start">
-                <Link href="/leave">
+              <Button
+                asChild
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <Link href="/ess/leave">
                   <Calendar className="mr-2 h-4 w-4" />
                   Apply for Leave
                 </Link>
               </Button>
-              <Button asChild variant="outline" className="w-full justify-start">
-                <Link href="/roster">
+              <Button
+                asChild
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <Link href="/ess/roster">
                   <CalendarClock className="mr-2 h-4 w-4" />
                   View Daily Roster
                 </Link>
@@ -97,16 +144,16 @@ export default function Home() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {user?.employee_code && (
+              {user?.empid && (
                 <div>
                   <p className="text-sm text-gray-500">Employee Code</p>
-                  <p className="font-semibold">{user.employee_code}</p>
+                  <p className="font-semibold">{user.empid}</p>
                 </div>
               )}
-              {user?.employee_email && (
+              {user?.username && (
                 <div>
-                  <p className="text-sm text-gray-500">Email</p>
-                  <p className="font-semibold">{user.employee_email}</p>
+                  <p className="text-sm text-gray-500">Username</p>
+                  <p className="font-semibold">{user.username}</p>
                 </div>
               )}
               {user?.organization_name && (
@@ -116,7 +163,7 @@ export default function Home() {
                 </div>
               )}
               <Button asChild variant="outline" className="w-full mt-4">
-                <Link href="/settings">
+                <Link href="/ess/user-settings">
                   <Settings className="mr-2 h-4 w-4" />
                   Account Settings
                 </Link>

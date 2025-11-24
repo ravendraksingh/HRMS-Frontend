@@ -21,6 +21,12 @@ import {
   CalendarDays,
   MapPin,
   UserCog,
+  UserCheck,
+  Search,
+  Briefcase,
+  X,
+  HeartHandshake,
+  Handshake,
 } from "lucide-react";
 import {
   Sidebar,
@@ -54,43 +60,73 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { useAuth } from "../auth/AuthContext";
 import { cn } from "@/lib/utils";
 import { externalApiClient } from "@/app/services/externalApiClient";
+import { clientTokenStorage } from "@/lib/tokenStorage";
+import { internalApiClient } from "@/app/services/internalApiClient";
+import { useAuth } from "@/components/common/AuthContext";
 
 const publicRoutes = [{ title: "Login", url: "/login", icon: LogIn }];
 
 const employeeRoutes = [
-  { title: "Profile", url: "/profile", icon: UserCircle },
-  { title: "Attendance", url: "/attendance", icon: CalendarClock },
-  { title: "Leave", url: "/leave", icon: CalendarOff },
-  { title: "Salaries", url: "/salary", icon: BadgeIndianRupee },
-  { title: "Personal Details", url: "/personal-details", icon: UserRound },
+  {
+    title: "Dashboard",
+    url: "/ess/employee-dashboard",
+    icon: LayoutDashboard,
+  },
+  { title: "Job Profile", url: "/ess/job-profile", icon: Briefcase },
+  { title: "Attendance", url: "/ess/attendance", icon: CalendarClock },
+  { title: "Leave", url: "/ess/leave", icon: CalendarOff },
+  { title: "Holidays", url: "/ess/holidays", icon: Calendar },
+  { title: "Salaries", url: "/ess/salary", icon: BadgeIndianRupee },
+  { title: "Personal Details", url: "/ess/personal-details", icon: UserRound },
+  { title: "User Settings", url: "/ess/user-settings", icon: Settings },
+];
+
+const managerRoutes = [
+  {
+    title: "Manager Dashboard",
+    url: "/manager/manager-dashboard",
+    icon: LayoutDashboard,
+  },
+  { title: "My Team", url: "/manager/my-team", icon: UsersRound },
+];
+
+const hrManagerRoutes = [
+  { title: "HR Dashboard", url: "/hr/hr-dashboard", icon: LayoutDashboard },
+  { title: "Search Employees", url: "/hr/search-employees", icon: Search },
+  { title: "Add Employees", url: "/hr/add-employees", icon: UsersRound },
+  { title: "Onboarding", url: "/hr/onboarding", icon: UserCheck },
+  {
+    title: "Monthly Calendar",
+    url: "/hr/monthly-calendar",
+    icon: CalendarDays,
+  },
+  { title: "Manage Holidays", url: "/hr/manage-holidays", icon: Calendar },
+  { title: "Shifts", url: "/hr/shifts", icon: CalendarClock },
+  { title: "Overtime", url: "/hr/overtime", icon: ClipboardClock },
+  { title: "Leave Types", url: "/hr/leave-types", icon: CalendarOff },
+  { title: "Policies", url: "/hr/attendance-policies", icon: Settings },
 ];
 
 const adminRoutes = [
+  {
+    title: "Admin Dashboard",
+    url: "/admin/admin-dashboard",
+    icon: LayoutDashboard,
+  },
   { title: "Locations", url: "/admin/locations", icon: MapPin },
   { title: "Departments", url: "/admin/departments", icon: Building },
   { title: "Roles", url: "/admin/roles", icon: ShieldUser },
   { title: "Users", url: "/admin/users", icon: UserRound },
-  { title: "Settings", url: "/admin/setting", icon: Settings },
-];
-
-const hrManagerRoutes = [
-  { title: "Employees", url: "/employees", icon: UsersRound },
-  { title: "Holidays", url: "/holidays", icon: Calendar },
-  { title: "Monthly Calendar", url: "/monthly-calendar", icon: CalendarDays },
-  { title: "Shifts", url: "/shifts", icon: CalendarClock },
-  { title: "Overtime", url: "/overtime", icon: ClipboardClock },
-  { title: "Policies", url: "/attendance-policies", icon: Settings },
+  { title: "Settings", url: "/admin/settings", icon: Settings },
 ];
 
 export const AppSidebar = () => {
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isHrManagerOpen, setIsHrManagerOpen] = useState(false);
   const [isEmployeeOpen, setIsEmployeeOpen] = useState(false);
-  const [isManager, setIsManager] = useState(false);
-  const { user, logout } = useAuth();
+  const [isManagerOpen, setIsManagerOpen] = useState(false);
   const { setOpen, isMobile, setOpenMobile } = useSidebar();
   // Function to close sidebar on mobile when a link is clicked
   const handleLinkClick = () => {
@@ -99,51 +135,64 @@ export const AppSidebar = () => {
     }
   };
 
-  // console.log("user in AppSidebar", user);
+  //   console.log("user in AppSidebar", user);
+  const { user } = useAuth();
+  console.log("user in AppSidebar", user, "roles:", user?.roles);
 
-  // Check if user is admin - check roles array for ADMIN role code
+  // Removed user role checks - components should handle auth individually
   let isAdmin = false;
-  isAdmin = user?.roles?.some(
-    (role) => role?.role_code?.toLowerCase() === "admin"
-  );
-
-  // Check if user is HR Manager - check roles array for HR_MANAGER role code
   let isHrManager = false;
-  isHrManager = user?.roles?.some(
-    (role) => role?.role_code?.toLowerCase() === "hr_manager"
+  let isManager = false;
+
+  user?.roles?.map((role) => {
+    if (role.toLowerCase() === "admin") {
+      isAdmin = true;
+    }
+    if (role.toLowerCase() === "hrmanager") {
+      isHrManager = true;
+    }
+    if (role.toLowerCase() === "manager") {
+      isManager = true;
+    }
+  });
+
+  console.log(
+    "isAdmin:",
+    isAdmin,
+    "isHrManager:",
+    isHrManager,
+    "isManager:",
+    isManager
   );
-
-  // Check if user is a manager (has direct reports)
-  useEffect(() => {
-    const checkIfManager = async () => {
-      if (!user?.employee_id) {
-        setIsManager(false);
-        return;
-      }
-
-      try {
-        const res = await externalApiClient.get(
-          `/managers/${user.employee_id}/employees`
-        );
-        const employees = res.data?.employees || res.data || [];
-        setIsManager(employees.length > 0);
-      } catch (error) {
-        // If 404 or error, user is not a manager
-        setIsManager(false);
-      }
-    };
-
-    checkIfManager();
-  }, [user?.employee_id]);
 
   async function handleLogout() {
     // Close sidebar on mobile before logout
     if (isMobile) {
       setOpenMobile(false);
     }
-    // Use centralized logout from AuthContext
-    await logout();
+    try {
+      await internalApiClient.post("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (error) {
+      console.error("Logout API error:", error);
+    } finally {
+      await clientTokenStorage.clearTokens();
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+    }
   }
+
+  // Function to close sidebar
+  const handleCloseSidebar = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    } else {
+      setOpen(false);
+    }
+  };
 
   return (
     <Sidebar collapsible="icon">
@@ -159,7 +208,7 @@ export const AppSidebar = () => {
                   width={20}
                   height={20}
                 />
-                <span>EMS App</span>
+                <span>HRMS Application</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -168,7 +217,7 @@ export const AppSidebar = () => {
       <SidebarSeparator className="ml-0" />
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Application</SidebarGroupLabel>
+          <SidebarGroupLabel>Employee Self Service</SidebarGroupLabel>
           <SidebarGroupContent>
             {/* Main menu */}
             {!user &&
@@ -191,16 +240,6 @@ export const AppSidebar = () => {
                       <Link href="/" onClick={handleLinkClick}>
                         <Home size={16} />
                         <span>Home</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton asChild>
-                      <Link href="/dashboard" onClick={handleLinkClick}>
-                        <LayoutDashboard size={16} />
-                        <span>Dashboard</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -250,17 +289,45 @@ export const AppSidebar = () => {
         </SidebarGroup>
         {user && isManager && (
           <SidebarGroup>
-            <SidebarGroupLabel>Manager</SidebarGroupLabel>
+            <SidebarGroupLabel>Manage Your Team</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <Link href="/team" onClick={handleLinkClick}>
-                      <UserCog size={16} />
-                      <span>My Team</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                <Collapsible
+                  open={isManagerOpen}
+                  onOpenChange={setIsManagerOpen}
+                  defaultOpen={false}
+                  className="group/collapsible"
+                >
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton>
+                        <Briefcase size={16} />
+                        <span>Manager</span>
+                        <ChevronUp
+                          className={cn(
+                            "ml-auto transition-transform",
+                            isHrManagerOpen ? "" : "rotate-180",
+                            "group-data-[collapsible=icon]:hidden"
+                          )}
+                        />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                  </SidebarMenuItem>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      {managerRoutes.map((r, index) => (
+                        <SidebarMenuSubItem key={`${r.url}_${index}`}>
+                          <SidebarMenuSubButton asChild>
+                            <Link href={r.url} onClick={handleLinkClick}>
+                              <r.icon size={16} />
+                              {r.title}
+                            </Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      ))}
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </Collapsible>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -279,7 +346,8 @@ export const AppSidebar = () => {
                   <SidebarMenuItem>
                     <CollapsibleTrigger asChild>
                       <SidebarMenuButton>
-                        <UsersRound size={16} />
+                        {/* <UsersRound size={16} /> */}
+                        <Handshake size={16} />
                         <span>HR Manager</span>
                         <ChevronUp
                           className={cn(
@@ -386,23 +454,31 @@ export const AppSidebar = () => {
             <SidebarMenuItem>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <SidebarMenuButton>
+                  <SidebarMenuButton className="text-blue-600 font-semibold hover:text-blue-600 hover:cursor-pointer">
                     <User2 />
                     {user?.employee_name ||
                       user?.name ||
                       user?.username ||
-                      "User"}{" "}
+                      "User"}
                     <ChevronUp className="ml-auto" />
                   </SidebarMenuButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem>Account</DropdownMenuItem>
-                  <DropdownMenuItem>Setting</DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Link
+                      href="/ess/employee-dashboard"
+                      className="flex items-center w-full gap-2"
+                      onClick={handleLinkClick}
+                    >
+                      {/* <LayoutDashboard size={16} /> */}
+                      My Dashboard
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     variant="destructive"
                     onClick={handleLogout}
                   >
-                    Sign Out
+                    Log Out
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
