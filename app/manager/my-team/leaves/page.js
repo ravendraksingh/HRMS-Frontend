@@ -86,4 +86,3 @@ export default function LeaveApprovalsPage() {
 
   return <LeaveApprovals teamMembers={teamMembers} managerId={user?.empid} />;
 }
-

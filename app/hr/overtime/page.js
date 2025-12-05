@@ -11,7 +11,7 @@ import { externalApiClient } from "@/app/services/externalApiClient";
 import { Clock } from "lucide-react";
 import { getErrorMessage } from "@/lib/emsUtil";
 import OrganizationInfoCard from "@/components/common/OrganizationInfoCard";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
 import { useAuth } from "@/components/common/AuthContext";
 
 const OvertimePage = () => {

@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -20,11 +19,11 @@ import { UserPlus } from "lucide-react";
 import OrganizationInfoCard from "@/components/common/OrganizationInfoCard";
 import { useAuth } from "@/components/common/AuthContext";
 import { getErrorMessage } from "@/lib/emsUtil";
+import SearchEmployee from "@/components/common/SearchEmployee";
 
 const ManageUsersPage = () => {
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
-  const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
@@ -34,16 +33,14 @@ const ManageUsersPage = () => {
     password: "",
     empid: "",
     is_active: "Y",
-    role_ids: [],
   });
   const [draftUser, setDraftUser] = useState({});
-  const { user } = useAuth()
+  const { user } = useAuth();
 
   useEffect(() => {
     if (user) {
       fetchUsers();
       fetchRoles();
-      fetchEmployees();
     } else {
       // If no user, stop loading to prevent infinite loading state
       setLoading(false);
@@ -59,12 +56,9 @@ const ManageUsersPage = () => {
       setError("");
     } catch (e) {
       console.error("Error fetching users:", e);
-      const errorMessage =
-        e?.response?.data?.error ||
-        e?.response?.data?.message ||
-        "Error fetching users";
+      const errorMessage = getErrorMessage(e, "Failed to load users");
       setError(errorMessage);
-      toast.error(`Failed to load users: ${errorMessage}`);
+      toast.error(errorMessage);
       setUsers([]);
     } finally {
       setLoading(false);
@@ -75,42 +69,18 @@ const ManageUsersPage = () => {
     try {
       const res = await externalApiClient.get("/roles");
       const rolesData = res.data?.roles;
-      console.log("Roles data:", rolesData);
       setRoles(rolesData);
     } catch (e) {
       console.error("Failed to load roles", e);
-      const errorMessage =
-        e?.response?.data?.error ||
-        e?.response?.data?.message ||
-        "Failed to load roles";
+      const errorMessage = getErrorMessage(e, "Failed to load roles");
+      setError(errorMessage);
       toast.error(errorMessage);
       setRoles([]);
     }
   };
 
-  const fetchEmployees = async () => {
-    try {
-      const res = await externalApiClient.get("/employees");
-      // Handle wrapped response format: { employees: [...] } or direct array
-      const employeesData =
-        res.data?.employees || (Array.isArray(res.data) ? res.data : []);
-      setEmployees(employeesData);
-    } catch (e) {
-      console.error("Failed to load employees", e);
-      const errorMessage =
-        e?.response?.data?.error ||
-        e?.response?.data?.message ||
-        "Failed to load employees";
-      // Don't show toast for employees fetch failure - it's not critical
-      // The employee dropdown will just be empty
-      setEmployees([]); // Ensure it's always an array even on error
-    }
-  };
-
   const handleAddNew = () => {
     setAdding(true);
-    const defaultUserRole = roles.find((r) => r.roleid === "USER");
-    console.log("Default user role:", defaultUserRole);
     setNewUser({
       username: "",
       password: "",
@@ -122,18 +92,11 @@ const ManageUsersPage = () => {
 
   const handleCancelNew = () => {
     setAdding(false);
-    // Find default user role and include it by default - ONLY USER role
-    const defaultUserRole = roles.find((r) => {
-      return r.roleid === "USER";
-    });
-
-    // Reset to only USER role selected
     setNewUser({
       username: "",
       password: "",
       empid: "",
       is_active: "Y",
-      role_ids: defaultUserRole ? [defaultUserRole.id] : [], // Only USER role, no other roles
     });
     setError("");
   };
@@ -144,36 +107,6 @@ const ManageUsersPage = () => {
       ...prev,
       [name]: value,
     }));
-  };
-
-  const handleRoleToggle = (roleId) => {
-    // Find the role to check its type
-    const role = roles.find((r) => r.roleid === roleId);
-    if (!role) return;
-
-    const isAdmin = role.roleid === "ADMIN";
-    const isCxo = role.roleid === "CXO";
-    const isUserRole = role.roleid === "USER";
-
-    // Prevent adding ADMIN or CXO roles
-    if (isAdmin || isCxo) {
-      toast.error(`${role.role_name} role cannot be assigned`);
-      return;
-    }
-
-    // Prevent unchecking USER role
-    if (isUserRole && newUser.role_ids?.includes(roleId)) {
-      toast.error("USER role cannot be removed");
-      return;
-    }
-
-    setNewUser((prev) => {
-      const roleIds = prev.role_ids || [];
-      const newRoleIds = roleIds.includes(roleId)
-        ? roleIds.filter((id) => id !== roleId)
-        : [...roleIds, roleId];
-      return { ...prev, role_ids: newRoleIds };
-    });
   };
 
   const handleSaveNew = async () => {
@@ -197,7 +130,7 @@ const ManageUsersPage = () => {
   };
 
   const handleEdit = (user) => {
-    setEditingId(user.empid);
+    setEditingId(user.username);
     setDraftUser({ ...user });
     setError("");
   };
@@ -208,10 +141,10 @@ const ManageUsersPage = () => {
     setError("");
   };
 
-  const handleSaveEdit = async (userToEdit) => {
+  const handleSaveEdit = async (username) => {
     try {
       const res = await externalApiClient.patch(
-        `/users/${userToEdit.empid}`,
+        `/users/${username}`,
         draftUser
       );
       toast.success("User updated successfully!");
@@ -232,8 +165,10 @@ const ManageUsersPage = () => {
     )
       return;
     try {
-      await externalApiClient.delete(`/users/${userToDelete.empid}`);
-      setUsers((prev) => prev.filter((u) => u.empid !== userToDelete.empid));
+      await externalApiClient.delete(`/users/${userToDelete.username}`);
+      setUsers((prev) =>
+        prev.filter((u) => u.username !== userToDelete.username)
+      );
       toast.success("User deleted successfully!");
     } catch (error) {
       const errorMsg = getErrorMessage(error, "Failed to delete user");
@@ -241,7 +176,7 @@ const ManageUsersPage = () => {
     }
   };
 
-  const handleAssignRole = async (empId, roleId) => {
+  const handleAssignRole = async (username, roleId) => {
     // Find the role to check if it's ADMIN or CXO
     const role = roles.find((r) => r.roleid === roleId);
     if (role) {
@@ -255,23 +190,21 @@ const ManageUsersPage = () => {
     }
 
     try {
-      console.log("Assigning role:", { empId, roleId });
-      const res = await externalApiClient.post(`/users/${empId}/roles`, {
+      const res = await externalApiClient.post(`/users/${username}/roles`, {
         roleid: roleId,
         assignedBy: user.empid,
       });
-      console.log("Assign role response:", res.data);
       toast.success("Role assigned successfully!");
       // Refresh users list to get updated roles
       await fetchUsers();
     } catch (error) {
-      console.error("Error assigning role:", error);
       const errorMsg = getErrorMessage(error, "Failed to assign role");
+      setError(errorMsg);
       toast.error(errorMsg);
     }
   };
 
-  const handleRemoveRole = async (userId, roleIdentifier) => {
+  const handleRemoveRole = async (username, roleIdentifier) => {
     if (!confirm("Are you sure you want to remove this role?")) return;
     try {
       // roleIdentifier could be a roleid, role_id, or role id
@@ -295,51 +228,21 @@ const ManageUsersPage = () => {
         if (foundRole && foundRole.id) {
           actualRoleId = foundRole.id;
         } else {
-          // If not found, log and try using the identifier as-is (might work if backend accepts codes)
-          console.warn(
-            "Could not find role ID for identifier:",
-            roleIdentifier,
-            "Available roles:",
-            roles
-          );
+          // If not found, try using the identifier as-is (might work if backend accepts codes)
           actualRoleId = roleIdentifier;
         }
       }
 
-      console.log("Removing role:", { userId, roleIdentifier, actualRoleId });
-      await externalApiClient.delete(`/users/${userId}/roles/${actualRoleId}`);
+      await externalApiClient.delete(
+        `/users/${username}/roles/${actualRoleId}`
+      );
       toast.success("Role removed successfully!");
       await fetchUsers();
     } catch (error) {
-      console.error("Error removing role:", error);
-      const errorMsg =
-        error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        "Failed to remove role";
+      const errorMsg = getErrorMessage(error, "Failed to remove role");
+      setError(errorMsg);
       toast.error(errorMsg);
     }
-  };
-
-  const getEmployeeId = (employeeId) => {
-    if (!employeeId) return employeeId || "N/A";
-    // Ensure employees is an array before calling find
-    if (!Array.isArray(employees) || employees.length === 0) {
-      return employeeId;
-    }
-    // Convert employeeId to both string and number for comparison
-    const employeeIdStr = String(employeeId);
-    const employeeIdNum = Number(employeeId);
-
-    // Use empid only
-    const employee = employees.find((e) => String(e.empid) === employeeIdStr);
-
-    if (employee) {
-      // Return empid if available, otherwise return the employeeId passed in
-      return employee.empid || employeeId;
-    }
-
-    // Return the employeeId if employee not found in list
-    return employeeId;
   };
 
   return (
@@ -404,35 +307,14 @@ const ManageUsersPage = () => {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="new-employee_id" className="mb-1">
-                    Employee ID *
-                  </Label>
-                  <Select
-                    value={newUser.empid || ""}
-                    onValueChange={(value) =>
-                      setNewUser({ ...newUser, empid: value })
-                    }
-                  >
-                    <SelectTrigger id="new-employee_id" className="w-full">
-                      <SelectValue placeholder="Select Employee" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {employees &&
-                      Array.isArray(employees) &&
-                      employees.length > 0 ? (
-                        employees.map((emp) => (
-                          <SelectItem key={emp.empid} value={String(emp.empid)}>
-                            {emp.name}
-                            {emp.empid ? ` (${emp.empid})` : ""}
-                          </SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="__no_employees__" disabled>
-                          No employees available
-                        </SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <SearchEmployee
+                    onSelect={(empid, employee) => {
+                      setNewUser({ ...newUser, empid: empid || "" });
+                    }}
+                    label="Employee ID *"
+                    placeholder="Search employee by ID or name..."
+                    showLabel={true}
+                  />
                 </div>
                 <div>
                   <Label htmlFor="is_active" className="mb-1">
@@ -484,19 +366,19 @@ const ManageUsersPage = () => {
             {users &&
               Array.isArray(users) &&
               users.map((userItem, index) => (
-                <Card key={userItem.empid || `user-${index}`}>
+                <Card key={userItem.username || `user-${index}`}>
                   <CardContent className="p-6">
-                    {editingId === userItem.empid ? (
+                    {editingId === userItem.username ? (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <Label
-                            htmlFor={`edit-username-${userItem.empid}`}
+                            htmlFor={`edit-username-${userItem.username}`}
                             className="mb-1"
                           >
                             Username
                           </Label>
                           <Input
-                            id={`edit-username-${userItem.empid}`}
+                            id={`edit-username-${userItem.username}`}
                             value={draftUser.username || ""}
                             onChange={(e) =>
                               setDraftUser({
@@ -509,7 +391,7 @@ const ManageUsersPage = () => {
                         </div>
                         <div>
                           <Label
-                            htmlFor={`edit-status-${userItem.empid}`}
+                            htmlFor={`edit-status-${userItem.username}`}
                             className="mb-1"
                           >
                             Status
@@ -524,7 +406,7 @@ const ManageUsersPage = () => {
                             }
                           >
                             <SelectTrigger
-                              id={`edit-status-${userItem.empid}`}
+                              id={`edit-status-${userItem.username}`}
                               className="w-full"
                             >
                               <SelectValue placeholder="Select status" />
@@ -538,7 +420,7 @@ const ManageUsersPage = () => {
                         <div className="flex gap-2 mt-4 md:col-span-2">
                           <Button
                             size="sm"
-                            onClick={() => handleSaveEdit(userItem.empid)}
+                            onClick={() => handleSaveEdit(userItem.username)}
                           >
                             Save
                           </Button>
@@ -559,7 +441,8 @@ const ManageUsersPage = () => {
                               Username: {userItem.username}
                             </h3>
                             <p className="text-sm text-gray-600 mt-1">
-                              Employee ID: {userItem.empid} Name: {userItem.employee_name}
+                              Employee ID: {userItem.empid} Name:{" "}
+                              {userItem.employee_name}
                             </p>
                             <div className="flex gap-2 mt-2 flex-wrap">
                               {userItem.roles &&
@@ -579,7 +462,7 @@ const ManageUsersPage = () => {
                                       <button
                                         onClick={() =>
                                           handleRemoveRole(
-                                            userItem.empid,
+                                            userItem.username,
                                             roleId
                                           )
                                         }
@@ -624,7 +507,7 @@ const ManageUsersPage = () => {
                             <Button
                               size="sm"
                               onClick={() => handleEdit(userItem)}
-                              disabled={adding}
+                              disabled={adding || editingId !== null}
                               variant="outline"
                             >
                               Edit
@@ -633,7 +516,7 @@ const ManageUsersPage = () => {
                               size="sm"
                               variant="destructive"
                               onClick={() => handleDelete(userItem)}
-                              disabled={adding}
+                              disabled={adding || editingId !== null}
                             >
                               Delete
                             </Button>
@@ -694,7 +577,7 @@ const ManageUsersPage = () => {
                                     disabled={isDisabled}
                                     onClick={() =>
                                       handleAssignRole(
-                                        userItem.empid,
+                                        userItem.username,
                                         role.roleid
                                       )
                                     }

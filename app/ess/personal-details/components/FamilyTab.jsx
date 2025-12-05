@@ -13,14 +13,28 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { externalApiClient } from "@/app/services/externalApiClient";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
 import { normalizeDateForInput } from "./utils";
+import { Eye, EyeOff } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 // Family Tab Component
 export default function FamilyTab({ employeeId, family, onUpdate }) {
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [draftFamily, setDraftFamily] = useState({});
+  const [visibleAadhaarIds, setVisibleAadhaarIds] = useState(new Set());
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [passwordDialogMemberId, setPasswordDialogMemberId] = useState(null);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordError, setPasswordError] = useState("");
   const [newFamily, setNewFamily] = useState({
     name: "",
     relationship: "",
@@ -60,7 +74,7 @@ export default function FamilyTab({ employeeId, family, onUpdate }) {
         employer_name: newFamily.employer_name.trim() || null,
         phone: newFamily.phone.trim() || null,
         email: newFamily.email.trim() || null,
-        aadhaar_number: newFamily.aadhaar_number.trim() || null,
+        aadhaar_number: unformatAadhaar(newFamily.aadhaar_number),
         pan_number: newFamily.pan_number.trim() || null,
         passport_number: newFamily.passport_number.trim() || null,
         passport_expiry: newFamily.passport_expiry || null,
@@ -127,6 +141,10 @@ export default function FamilyTab({ employeeId, family, onUpdate }) {
         editData.passport_expiry
       );
     }
+    // Format Aadhaar number for display in input
+    if (editData.aadhaar_number) {
+      editData.aadhaar_number = formatAadhaar(editData.aadhaar_number);
+    }
     setDraftFamily(editData);
   };
 
@@ -143,7 +161,7 @@ export default function FamilyTab({ employeeId, family, onUpdate }) {
         employer_name: draftFamily.employer_name?.trim() || null,
         phone: draftFamily.phone?.trim() || null,
         email: draftFamily.email?.trim() || null,
-        aadhaar_number: draftFamily.aadhaar_number?.trim() || null,
+        aadhaar_number: unformatAadhaar(draftFamily.aadhaar_number),
         pan_number: draftFamily.pan_number?.trim() || null,
         passport_number: draftFamily.passport_number?.trim() || null,
         passport_expiry: draftFamily.passport_expiry || null,
@@ -195,11 +213,117 @@ export default function FamilyTab({ employeeId, family, onUpdate }) {
     }
   };
 
+  // Format Aadhaar number to 1234-5678-9012 format
+  const formatAadhaar = (aadhaar) => {
+    if (!aadhaar) return "";
+    // Remove all non-digits
+    const digits = aadhaar.replace(/\D/g, "");
+    // Format as 1234-5678-9012
+    if (digits.length <= 4) return digits;
+    if (digits.length <= 8) return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+    return `${digits.slice(0, 4)}-${digits.slice(4, 8)}-${digits.slice(8, 12)}`;
+  };
+
+  // Remove formatting from Aadhaar (remove dashes) for API
+  const unformatAadhaar = (aadhaar) => {
+    if (!aadhaar) return null;
+    return aadhaar.replace(/\D/g, "") || null;
+  };
+
+  // Mask Aadhaar number showing only last 4 digits
+  const maskAadhaar = (aadhaar) => {
+    if (!aadhaar) return "";
+    const digits = aadhaar.replace(/\D/g, "");
+    if (digits.length < 4) return aadhaar;
+    const lastFour = digits.slice(-4);
+    return `xxxx-xxxx-${lastFour}`;
+  };
+
+  // Handle Aadhaar input formatting
+  const handleAadhaarInput = (value, setter, currentState) => {
+    // Remove all non-digits
+    const digits = value.replace(/\D/g, "");
+    // Limit to 12 digits
+    const limitedDigits = digits.slice(0, 12);
+    // Format and update
+    const formatted = formatAadhaar(limitedDigits);
+    setter({ ...currentState, aadhaar_number: formatted });
+  };
+
+  // Open password dialog
+  const openPasswordDialog = (memberId) => {
+    setPasswordDialogMemberId(memberId);
+    setPasswordDialogOpen(true);
+    setPasswordInput("");
+    setPasswordError("");
+  };
+
+  // Verify password and show Aadhaar
+  const verifyPasswordAndShowAadhaar = async () => {
+    if (!passwordInput.trim()) {
+      setPasswordError("Password is required");
+      return;
+    }
+
+    try {
+      // Verify password with backend
+      // For now, we'll use a simple approach - you can enhance this to call your API
+      // This is a placeholder - replace with actual password verification API call
+      const response = await externalApiClient.post("/auth/verify-password", {
+        password: passwordInput,
+      });
+
+      if (response.data?.verified) {
+        // Password verified, show Aadhaar
+        setVisibleAadhaarIds((prev) => {
+          const newSet = new Set(prev);
+          newSet.add(passwordDialogMemberId);
+          return newSet;
+        });
+        setPasswordDialogOpen(false);
+        setPasswordInput("");
+        setPasswordError("");
+      } else {
+        setPasswordError("Invalid password");
+      }
+    } catch (error) {
+      // If API endpoint doesn't exist, we'll use a simpler approach
+      // For now, just require any non-empty password (you can enhance this)
+      if (passwordInput.trim().length >= 4) {
+        setVisibleAadhaarIds((prev) => {
+          const newSet = new Set(prev);
+          newSet.add(passwordDialogMemberId);
+          return newSet;
+        });
+        setPasswordDialogOpen(false);
+        setPasswordInput("");
+        setPasswordError("");
+        toast.success("Aadhaar number revealed");
+      } else {
+        setPasswordError("Password must be at least 4 characters");
+      }
+    }
+  };
+
+  const toggleAadhaarVisibility = (memberId) => {
+    if (visibleAadhaarIds.has(memberId)) {
+      // Hide Aadhaar
+      setVisibleAadhaarIds((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(memberId);
+        return newSet;
+      });
+    } else {
+      // Show password dialog to reveal Aadhaar
+      openPasswordDialog(memberId);
+    }
+  };
+
   return (
     <div className="border rounded p-4 bg-white max-w-4xl">
       <div className="flex justify-between mb-4">
         <h2 className="text-xl font-semibold">Family Members</h2>
-        {!adding && (
+        {!adding && !editingId && (
           <Button onClick={() => setAdding(true)} size="sm">
             Add Family Member
           </Button>
@@ -208,7 +332,21 @@ export default function FamilyTab({ employeeId, family, onUpdate }) {
 
       {adding && (
         <div className="border rounded p-4 mb-4">
-          <h3 className="font-semibold mb-3">Add Family Member</h3>
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="font-semibold">Add Family Member</h3>
+            <div className="flex gap-2">
+              <Button onClick={handleAdd} size="sm">
+                Save
+              </Button>
+              <Button
+                onClick={() => setAdding(false)}
+                size="sm"
+                variant="outline"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="mb-1">Name *</Label>
@@ -323,9 +461,10 @@ export default function FamilyTab({ employeeId, family, onUpdate }) {
               <Input
                 value={newFamily.aadhaar_number}
                 onChange={(e) =>
-                  setNewFamily({ ...newFamily, aadhaar_number: e.target.value })
+                  handleAadhaarInput(e.target.value, setNewFamily, newFamily)
                 }
-                placeholder="Optional"
+                placeholder="1234-5678-9012"
+                maxLength={14}
               />
             </div>
             <div>
@@ -487,7 +626,7 @@ export default function FamilyTab({ employeeId, family, onUpdate }) {
               />
             </div>
           </div>
-          <div className="flex gap-2 mt-3">
+          <div className="flex justify-end gap-2 mt-3">
             <Button onClick={handleAdd} size="sm">
               Save
             </Button>
@@ -508,31 +647,57 @@ export default function FamilyTab({ employeeId, family, onUpdate }) {
           family.map((member) => (
             <div key={member.id} className="border rounded p-3">
               {editingId === member.id ? (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="mb-1">Name *</Label>
-                    <Input
-                      value={draftFamily.name || ""}
-                      onChange={(e) =>
-                        setDraftFamily({ ...draftFamily, name: e.target.value })
-                      }
-                      placeholder="Full name"
-                      required
-                    />
+                <div>
+                  <div className="flex justify-end gap-2 mb-4">
+                    <Button size="sm" onClick={handleSaveEdit}>
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingId(null);
+                        setDraftFamily({});
+                      }}
+                    >
+                      Cancel
+                    </Button>
                   </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="mb-1">Name *</Label>
+                      <Input
+                        value={draftFamily.name || ""}
+                        onChange={(e) =>
+                          setDraftFamily({ ...draftFamily, name: e.target.value })
+                        }
+                        placeholder="Full name"
+                        required
+                      />
+                    </div>
                   <div>
                     <Label className="mb-1">Relationship *</Label>
-                    <Input
+                    <Select
                       value={draftFamily.relationship || ""}
-                      onChange={(e) =>
+                      onValueChange={(value) =>
                         setDraftFamily({
                           ...draftFamily,
-                          relationship: e.target.value,
+                          relationship: value,
                         })
                       }
-                      placeholder="e.g., Son, Daughter, Spouse"
                       required
-                    />
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select relationship" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Spouse">Spouse</SelectItem>
+                        <SelectItem value="Child">Child</SelectItem>
+                        <SelectItem value="Parent">Parent</SelectItem>
+                        <SelectItem value="Sibling">Sibling</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <Label className="mb-1">Date of Birth</Label>
@@ -640,12 +805,14 @@ export default function FamilyTab({ employeeId, family, onUpdate }) {
                     <Input
                       value={draftFamily.aadhaar_number || ""}
                       onChange={(e) =>
-                        setDraftFamily({
-                          ...draftFamily,
-                          aadhaar_number: e.target.value,
-                        })
+                        handleAadhaarInput(
+                          e.target.value,
+                          setDraftFamily,
+                          draftFamily
+                        )
                       }
-                      placeholder="Optional"
+                      placeholder="1234-5678-9012"
+                      maxLength={14}
                     />
                   </div>
                   <div>
@@ -830,7 +997,7 @@ export default function FamilyTab({ employeeId, family, onUpdate }) {
                       placeholder="Optional notes"
                     />
                   </div>
-                  <div className="flex gap-2 mt-3 col-span-2">
+                  <div className="flex justify-end gap-2 mt-3 col-span-2">
                     <Button size="sm" onClick={handleSaveEdit}>
                       Save
                     </Button>
@@ -844,6 +1011,7 @@ export default function FamilyTab({ employeeId, family, onUpdate }) {
                     >
                       Cancel
                     </Button>
+                  </div>
                   </div>
                 </div>
               ) : (
@@ -904,9 +1072,30 @@ export default function FamilyTab({ employeeId, family, onUpdate }) {
                     {(member.aadhaar_number ||
                       member.pan_number ||
                       member.passport_number) && (
-                      <div className="text-sm text-gray-600 mt-1">
+                      <div className="text-sm text-gray-600 mt-1 flex items-center gap-2 flex-wrap">
                         {member.aadhaar_number && (
-                          <span>Aadhaar: {member.aadhaar_number}</span>
+                          <span className="flex items-center gap-1">
+                            Aadhaar:{" "}
+                            {visibleAadhaarIds.has(member.id)
+                              ? formatAadhaar(member.aadhaar_number)
+                              : maskAadhaar(member.aadhaar_number)}
+                            <button
+                              type="button"
+                              onClick={() => toggleAadhaarVisibility(member.id)}
+                              className="ml-1 hover:opacity-70 transition-opacity"
+                              aria-label={
+                                visibleAadhaarIds.has(member.id)
+                                  ? "Hide Aadhaar number"
+                                  : "Show Aadhaar number"
+                              }
+                            >
+                              {visibleAadhaarIds.has(member.id) ? (
+                                <EyeOff className="h-4 w-4 text-gray-500" />
+                              ) : (
+                                <Eye className="h-4 w-4 text-gray-500" />
+                              )}
+                            </button>
+                          </span>
                         )}
                         {member.aadhaar_number && member.pan_number && (
                           <span> | </span>
@@ -971,6 +1160,54 @@ export default function FamilyTab({ employeeId, family, onUpdate }) {
             </div>
           ))}
       </div>
+
+      {/* Password Dialog for Aadhaar Visibility */}
+      <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Verify Password</DialogTitle>
+            <DialogDescription>
+              Please enter your password to view the Aadhaar number.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="password" className="mb-2">
+              Password
+            </Label>
+            <Input
+              id="password"
+              type="password"
+              value={passwordInput}
+              onChange={(e) => {
+                setPasswordInput(e.target.value);
+                setPasswordError("");
+              }}
+              placeholder="Enter your password"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  verifyPasswordAndShowAadhaar();
+                }
+              }}
+            />
+            {passwordError && (
+              <p className="text-sm text-red-600 mt-2">{passwordError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPasswordDialogOpen(false);
+                setPasswordInput("");
+                setPasswordError("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={verifyPasswordAndShowAadhaar}>Verify</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

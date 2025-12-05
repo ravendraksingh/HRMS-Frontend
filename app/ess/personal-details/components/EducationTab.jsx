@@ -6,13 +6,15 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { externalApiClient } from "@/app/services/externalApiClient";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
 import { normalizeDateForInput } from "./utils";
+import { CheckCircle2 } from "lucide-react";
 
 // Education Tab Component
-export default function EducationTab({ employeeId, education, onUpdate }) {
+export default function EducationTab({ employeeId, education, onUpdate, isHRView = false }) {
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [verifyingId, setVerifyingId] = useState(null);
   const [newEducation, setNewEducation] = useState({
     qualification_type: "",
     degree: "",
@@ -93,6 +95,26 @@ export default function EducationTab({ employeeId, education, onUpdate }) {
         error?.response?.data?.message ||
         "Failed to delete education";
       toast.error(errorMessage);
+    }
+  };
+
+  const handleVerify = async (edu) => {
+    try {
+      setVerifyingId(edu.id);
+      await externalApiClient.patch(
+        `/employees/${employeeId}/education/${edu.id}`,
+        { is_verified: "Y" }
+      );
+      toast.success("Education verified successfully!");
+      onUpdate();
+    } catch (error) {
+      const errorMessage =
+        error?.response?.data?.error ||
+        error?.response?.data?.message ||
+        "Failed to verify education";
+      toast.error(errorMessage);
+    } finally {
+      setVerifyingId(null);
     }
   };
 
@@ -468,6 +490,19 @@ export default function EducationTab({ employeeId, education, onUpdate }) {
                     </div>
                   </div>
                   <div className="flex gap-2">
+                    {isHRView && 
+                     (edu.is_verified !== "Y" && edu.is_verified !== "y") && (
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={() => handleVerify(edu)}
+                        disabled={verifyingId === edu.id}
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        <CheckCircle2 className="h-4 w-4 mr-2" />
+                        {verifyingId === edu.id ? "Verifying..." : "Verify"}
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       onClick={() => {

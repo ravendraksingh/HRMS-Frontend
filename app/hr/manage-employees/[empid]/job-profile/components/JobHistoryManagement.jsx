@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { externalApiClient } from "@/app/services/externalApiClient";
 import { toast } from "sonner";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
 import { Spinner } from "@/components/ui/shadcn-io/spinner";
 import {
   Briefcase,

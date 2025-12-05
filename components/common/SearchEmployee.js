@@ -18,49 +18,8 @@ import { Spinner } from "@/components/ui/shadcn-io/spinner";
 import { Badge } from "@/components/ui/badge";
 
 /**
- * Simple fuzzy search function
- * Checks if the search term appears in the text (case-insensitive)
- * and calculates a simple relevance score
- */
-const fuzzyMatch = (text, searchTerm) => {
-  if (!text || !searchTerm) return { match: false, score: 0 };
-  
-  const textLower = text.toLowerCase();
-  const searchLower = searchTerm.toLowerCase();
-  
-  // Exact match gets highest score
-  if (textLower === searchLower) {
-    return { match: true, score: 100 };
-  }
-  
-  // Starts with gets high score
-  if (textLower.startsWith(searchLower)) {
-    return { match: true, score: 80 };
-  }
-  
-  // Contains gets medium score
-  if (textLower.includes(searchLower)) {
-    return { match: true, score: 60 };
-  }
-  
-  // Check for partial matches (fuzzy)
-  let searchIndex = 0;
-  for (let i = 0; i < textLower.length && searchIndex < searchLower.length; i++) {
-    if (textLower[i] === searchLower[searchIndex]) {
-      searchIndex++;
-    }
-  }
-  
-  if (searchIndex === searchLower.length) {
-    return { match: true, score: 40 };
-  }
-  
-  return { match: false, score: 0 };
-};
-
-/**
  * SearchEmployee Component
- * 
+ *
  * @param {Function} onSelect - Callback function that receives empid when employee is selected
  * @param {string} placeholder - Placeholder text for search input
  * @param {string} label - Label for the search field
@@ -108,15 +67,8 @@ const SearchEmployee = ({
       return;
     }
 
-    // For name search, require minimum 3 characters
-    if (type === "name" && term.trim().length < 3) {
-      setResults([]);
-      setShowResults(false);
-      return;
-    }
-
-    // For empid search, require minimum 3 characters
-    if (type === "empid" && term.trim().length < 3) {
+    // Require minimum 3 characters for better search results
+    if (term.trim().length < 3) {
       setResults([]);
       setShowResults(false);
       return;
@@ -124,44 +76,32 @@ const SearchEmployee = ({
 
     try {
       setLoading(true);
-      const res = await externalApiClient.get("/employees");
-      const employees = res.data?.employees || res.data || [];
-      
+
+      // Build query parameters
+      const params = new URLSearchParams({
+        search_type: type,
+        search_value: term.trim(),
+        fuzzy: "true", // Enable fuzzy search on backend
+        limit: "10", // Limit to 10 results for dropdown
+        page: "1",
+      });
+
+      const res = await externalApiClient.get(
+        `/employees/search?${params.toString()}`
+      );
+
+      // API returns: { employees: [], total: number, page: number, limit: number }
+      const employees = res.data?.employees || [];
+
       if (!Array.isArray(employees)) {
         setResults([]);
+        setShowResults(false);
         return;
       }
 
-      // Filter and rank employees based on search type
-      let filtered = [];
-      
-      if (type === "empid") {
-        // Search by employee ID
-        filtered = employees
-          .map((emp) => {
-            const empid = String(emp.empid || emp.employee_id || emp.id || "");
-            const match = fuzzyMatch(empid, term);
-            return { ...emp, ...match };
-          })
-          .filter((emp) => emp.match)
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 10); // Limit to top 10 results
-      } else {
-        // Search by name
-        filtered = employees
-          .map((emp) => {
-            const name =
-              emp.employee_name ||
-              emp.name ||
-              `${emp.first_name || ""} ${emp.last_name || ""}`.trim() ||
-              "";
-            const match = fuzzyMatch(name, term);
-            return { ...emp, ...match };
-          })
-          .filter((emp) => emp.match)
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 10); // Limit to top 10 results
-      }
+      // Backend already handles filtering, sorting, and fuzzy matching
+      // Just limit to 10 results (already done via limit param, but ensure)
+      const filtered = employees.slice(0, 10);
 
       setResults(filtered);
       setShowResults(filtered.length > 0);
@@ -200,12 +140,10 @@ const SearchEmployee = ({
     setSearchTerm(
       searchType === "empid"
         ? String(empid)
-        : employee.employee_name ||
-            employee.name ||
-            `${employee.first_name || ""} ${employee.last_name || ""}`.trim()
+        : employee.name || `Employee ${empid}`
     );
     setShowResults(false);
-    
+
     if (onSelect && empid) {
       onSelect(empid, employee);
     }
@@ -224,12 +162,8 @@ const SearchEmployee = ({
 
   // Get display name for employee
   const getEmployeeDisplayName = (employee) => {
-    return (
-      employee.employee_name ||
-      employee.name ||
-      `${employee.first_name || ""} ${employee.last_name || ""}`.trim() ||
-      `Employee ${employee.empid || employee.employee_id || employee.id}`
-    );
+    // API returns 'name' field
+    return employee.name || `Employee ${employee.empid || "N/A"}`;
   };
 
   // Get employee ID for display
@@ -244,7 +178,7 @@ const SearchEmployee = ({
           {label}
         </Label>
       )}
-      
+
       <div className={`flex gap-2 ${searchType === "empid" ? "mb-7" : ""}`}>
         {/* Search Type Selector */}
         <div className="relative">
@@ -268,8 +202,15 @@ const SearchEmployee = ({
               <SelectItem value="empid">
                 <div className="flex items-center gap-2">
                   <span>Employee ID</span>
-                  <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-white text-xs px-1.5 py-0">
-                    <Zap className="h-3 w-3 mr-1" color="yellow" fill="yellow" />
+                  <Badge
+                    variant="default"
+                    className="bg-green-600 hover:bg-green-700 text-white text-xs px-1.5 py-0"
+                  >
+                    <Zap
+                      className="h-3 w-3 mr-1"
+                      color="yellow"
+                      fill="yellow"
+                    />
                     Quick
                   </Badge>
                 </div>
@@ -332,7 +273,7 @@ const SearchEmployee = ({
                 {results.map((employee) => {
                   const empid = getEmployeeId(employee);
                   const displayName = getEmployeeDisplayName(employee);
-                  
+
                   return (
                     <button
                       key={empid}
@@ -345,9 +286,7 @@ const SearchEmployee = ({
                         <div className="font-medium text-sm truncate">
                           {displayName}
                         </div>
-                        <div className="text-xs text-gray-500">
-                          ID: {empid}
-                        </div>
+                        <div className="text-xs text-gray-500">ID: {empid}</div>
                       </div>
                     </button>
                   );
@@ -376,7 +315,8 @@ const SearchEmployee = ({
           <div className="flex items-center gap-2">
             <User className="h-4 w-4 text-blue" />
             <span className="text-sm font-medium">
-              {getEmployeeDisplayName(selectedEmployee)} (ID: {getEmployeeId(selectedEmployee)})
+              {getEmployeeDisplayName(selectedEmployee)} (ID:{" "}
+              {getEmployeeId(selectedEmployee)})
             </span>
           </div>
           <Button
@@ -394,4 +334,3 @@ const SearchEmployee = ({
 };
 
 export default SearchEmployee;
-

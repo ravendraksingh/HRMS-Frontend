@@ -80,7 +80,8 @@ const SelectDepartment = ({
 
   useEffect(() => {
     fetchDepartments();
-  }, [fetchDepartments]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providedDepartments]);
 
   // Update departments if providedDepartments changes
   useEffect(() => {
@@ -113,7 +114,7 @@ const SelectDepartment = ({
   return (
     <div className={className}>
       {showLabel && (
-        <Label htmlFor={id} className="mb-1">
+        <Label htmlFor={id} className="mb-3">
           {label}
           {required && <span className="text-destructive ml-1">*</span>}
         </Label>

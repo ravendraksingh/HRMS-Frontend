@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import apiClient from "@/app/services/internalApiClient";
 import { externalApiClient } from "@/app/services/externalApiClient";
-import { UsersRound, Plus, X, Search } from "lucide-react";
+import { UsersRound, Plus } from "lucide-react";
 import OrganizationInfoCard from "@/components/common/OrganizationInfoCard";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -25,8 +25,6 @@ const AddEmployeesPage = () => {
   const [locations, setLocations] = useState([]);
   const [draftEmployee, setDraftEmployee] = useState({});
   const [error, setError] = useState("");
-  const [showManagerSearch, setShowManagerSearch] = useState(false);
-  const [selectedManagerData, setSelectedManagerData] = useState(null);
 
   useEffect(() => {
     fetchDepartments();
@@ -74,28 +72,16 @@ const AddEmployeesPage = () => {
     );
   };
 
-  const handleManagerSelect = (manager) => {
+  const handleManagerSelect = (empid, employee) => {
     setDraftEmployee({
       ...draftEmployee,
-      manager_id: manager.empid,
+      manager_id: empid || "",
     });
-    setSelectedManagerData(manager);
-    setShowManagerSearch(false);
-  };
-
-  const handleClearManager = () => {
-    setDraftEmployee({
-      ...draftEmployee,
-      manager_id: "",
-    });
-    setSelectedManagerData(null);
   };
 
   const handleCancelNew = () => {
     setDraftEmployee({});
     setError("");
-    setSelectedManagerData(null);
-    setShowManagerSearch(false);
   };
 
   const handleSaveNew = async () => {
@@ -124,12 +110,10 @@ const AddEmployeesPage = () => {
             : null,
       };
 
-      const res = await apiClient.post("/api/employees", payload);
+      const res = await externalApiClient.post("/employees", payload);
       toast.success("Employee created successfully!");
       setError("");
       setDraftEmployee({});
-      setSelectedManagerData(null);
-      setShowManagerSearch(false);
     } catch (error) {
       console.error("Error creating employee:", error);
       const errorMsg = getErrorMessage(error, "Failed to create employee");
@@ -268,73 +252,12 @@ const AddEmployeesPage = () => {
                   </Select>
                 </div>
                 <div className="md:col-span-2">
-                  <Label className="mb-1">Manager (Optional)</Label>
-                  {!showManagerSearch && !selectedManagerData ? (
-                    <div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setShowManagerSearch(true)}
-                        className="w-full justify-start"
-                      >
-                        <Search className="mr-2 h-4 w-4" />
-                        {draftEmployee.manager_id
-                          ? `Manager ID: ${draftEmployee.manager_id}`
-                          : "Click to search for manager"}
-                      </Button>
-                    </div>
-                  ) : showManagerSearch ? (
-                    <div className="space-y-2">
-                      <SearchEmployee
-                        onSelect={handleManagerSelect}
-                        label=""
-                        showLabel={false}
-                        placeholder="Search manager by name or employee ID..."
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowManagerSearch(false)}
-                        className="w-full"
-                      >
-                        Cancel Search
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded">
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">
-                            {selectedManagerData?.employee_name ||
-                              selectedManagerData?.name ||
-                              "Manager"}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            ID: {draftEmployee.manager_id}
-                          </p>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={handleClearManager}
-                          className="h-6 w-6 p-0"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowManagerSearch(true)}
-                        className="w-full"
-                      >
-                        Change Manager
-                      </Button>
-                    </div>
-                  )}
+                  <SearchEmployee
+                    onSelect={handleManagerSelect}
+                    label="Manager (Optional)"
+                    showLabel={true}
+                    placeholder="Search manager by name or employee ID..."
+                  />
                 </div>
                 <div className="flex gap-2 mt-4 md:col-span-2">
                   <Button
@@ -363,4 +286,3 @@ const AddEmployeesPage = () => {
 };
 
 export default AddEmployeesPage;
-

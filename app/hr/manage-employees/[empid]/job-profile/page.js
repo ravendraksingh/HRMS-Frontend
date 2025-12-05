@@ -34,7 +34,7 @@ import {
   Edit,
   X,
 } from "lucide-react";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
 import JobHistoryManagement from "./components/JobHistoryManagement";
 
 const ManageJobProfilePage = () => {
@@ -48,37 +48,16 @@ const ManageJobProfilePage = () => {
   const [hasAccess, setHasAccess] = useState(false);
   const [formData, setFormData] = useState({});
 
+  // Layout handles authentication, so we can assume user is authenticated and has access
   useEffect(() => {
     if (empid && user) {
+      setHasAccess(true);
       checkAccessAndFetch();
     }
   }, [empid, user]);
 
   const checkAccessAndFetch = async () => {
-    const userRoles = user?.roles || [];
-    const isHrManager = userRoles.some(
-      (role) =>
-        (typeof role === "string" && role.toLowerCase() === "hrmanager") ||
-        (typeof role === "object" &&
-          (role.roleid?.toLowerCase() === "hrmanager" ||
-            role.code?.toLowerCase() === "hrmanager"))
-    );
-    const isAdmin = userRoles.some(
-      (role) =>
-        (typeof role === "string" && role.toLowerCase() === "admin") ||
-        (typeof role === "object" &&
-          (role.roleid?.toLowerCase() === "admin" ||
-            role.code?.toLowerCase() === "admin"))
-    );
-
-    if (!isHrManager && !isAdmin) {
-      toast.error("Access denied. HR Manager or Admin role required.");
-      setHasAccess(false);
-      setLoading(false);
-      return;
-    }
-
-    setHasAccess(true);
+    // Layout handles role checking, so we can proceed directly
     fetchJobProfile();
   };
 

@@ -10,8 +10,7 @@ import axios from "axios";
 import { clientTokenStorage } from "@/lib/tokenStorage";
 
 /**
- * Get access token using token storage abstraction
- * Now supports async operations for cookie-based storage
+ * Get access token from sessionStorage
  */
 const getToken = async () => {
   try {
@@ -45,25 +44,19 @@ const onRefreshed = (token) => {
  */
 const refreshAccessToken = async () => {
   try {
-    const storageType = clientTokenStorage.getStorageType();
-    
-    // Prepare refresh request
+    const refreshToken = await clientTokenStorage.getRefreshToken();
+    if (!refreshToken) {
+      throw new Error("No refresh token available");
+    }
+
     const refreshOptions = {
       method: "POST",
-      headers: {},
+      headers: {
+        "Content-Type": "application/json",
+      },
       credentials: "include",
+      body: JSON.stringify({ refresh_token: refreshToken }),
     };
-
-    // For localStorage/sessionStorage, include refresh token in body
-    if (storageType !== "cookie") {
-      const refreshToken = await clientTokenStorage.getRefreshToken();
-      if (!refreshToken) {
-        throw new Error("No refresh token available");
-      }
-      refreshOptions.headers["Content-Type"] = "application/json";
-      refreshOptions.body = JSON.stringify({ refresh_token: refreshToken });
-    }
-    // For cookie mode, refresh token is in httpOnly cookie, no body needed
 
     const refreshResponse = await fetch("/api/auth/refresh", refreshOptions);
 
@@ -82,7 +75,9 @@ const refreshAccessToken = async () => {
       await clientTokenStorage.setRefreshToken(refreshData.refreshToken);
     }
 
-    return refreshData.accessToken || await clientTokenStorage.getAccessToken();
+    return (
+      refreshData.accessToken || (await clientTokenStorage.getAccessToken())
+    );
   } catch (error) {
     throw error;
   }
@@ -122,7 +117,8 @@ externalApiClient.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config;
-    const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
+    const currentPath =
+      typeof window !== "undefined" ? window.location.pathname : "";
 
     // Handle 401 errors - attempt token refresh
     if (error.response?.status === 401) {
@@ -135,11 +131,11 @@ externalApiClient.interceptors.response.use(
       if (originalRequest._retry) {
         // Already retried, refresh must have failed - redirect to login
         await clientTokenStorage.clearTokens();
-        
+
         if (typeof window !== "undefined") {
           window.location.href = "/login";
         }
-        
+
         return Promise.reject(error);
       }
 
@@ -147,11 +143,11 @@ externalApiClient.interceptors.response.use(
       const token = await getToken();
       if (!token) {
         await clientTokenStorage.clearTokens();
-        
+
         if (typeof window !== "undefined") {
           window.location.href = "/login";
         }
-        
+
         return Promise.reject(error);
       }
 
@@ -194,34 +190,57 @@ externalApiClient.interceptors.response.use(
         // Refresh failed - clear tokens and redirect to login
         isRefreshing = false;
         refreshSubscribers = [];
-        
+
         await clientTokenStorage.clearTokens();
-        
+
         if (typeof window !== "undefined") {
           window.location.href = "/login";
         }
-        
+
         return Promise.reject(error);
       } finally {
         isRefreshing = false;
       }
     }
-    
+
     // Handle errors for external API calls
-    // Backend returns errors in format: { "error": "error message", "status": 404, "path": "/employees/123", "method": "GET" }
+    // Backend returns errors in format:
+    // - Simple: { "error": "error message", "status": 404, "path": "/employees/123", "method": "GET" }
+    // - Nested: { "error": { "message": "...", "code": "NOT_FOUND", "status": 404 } }
     if (error.response) {
       // API Error - response received
-      const { status, data, headers } = error.response;
-      const errorMessage = data?.error || data?.message || error.message || "An error occurred";
+      const { status, data } = error.response;
 
-      // Enhance error object with error message from backend
-      if (data && typeof data === "object") {
-        error.response.data = { ...data, errorMessage: errorMessage };
+      // Extract error message from nested error object if present
+      let message = "An error occurred";
+      let code = null;
+
+      if (data?.error) {
+        if (typeof data.error === "object" && data.error.message) {
+          // Nested error format: { error: { message: "...", code: "...", status: ... } }
+          message = data.error.message;
+          code = data.error.code || null;
+        } else if (typeof data.error === "string") {
+          // Simple error format: { error: "..." }
+          message = data.error;
+        }
+      } else if (data?.message) {
+        message = data.message;
+        code = data.code || null;
+      } else if (error.message) {
+        message = error.message;
       }
+
+      // Simplify error response for quick browser-level processing
+      // Provides flat structure: { message, code, status }
+      error.response.data = {
+        message,
+        code,
+        status,
+      };
     }
     return Promise.reject(error);
   }
 );
 
 export default externalApiClient;
-

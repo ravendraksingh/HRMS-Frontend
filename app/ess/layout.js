@@ -1,14 +1,16 @@
+"use client";
+
+import RouteGuard from "@/components/common/RouteGuard";
+
 /**
- * Employees Route Group Layout
- * Server-side protection for all employee routes
- * Requires authentication to access any route in this group
+ * ESS Layout - Protects all /ess/* routes
+ * Requires: Authentication (ALL roles - any authenticated user)
  */
-
-import { requireAuth } from "@/lib/serverAuth";
-
-export default async function EmployeesLayout({ children }) {
-  // Server-side auth check - redirects to login if not authenticated
-  await requireAuth();
-
-  return <>{children}</>;
+export default function ESSLayout({ children }) {
+  return (
+    <RouteGuard requiredRoles="ALL">
+      {children}
+    </RouteGuard>
+  );
 }
+

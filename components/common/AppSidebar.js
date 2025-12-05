@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Home,
   Settings,
@@ -15,17 +15,14 @@ import {
   LayoutDashboard,
   ShieldUser,
   Building,
+  Building2,
   Calendar,
   CalendarOff,
-  UserCircle,
   CalendarDays,
   MapPin,
-  UserCog,
   UserCheck,
   Search,
   Briefcase,
-  X,
-  HeartHandshake,
   Handshake,
 } from "lucide-react";
 import {
@@ -37,7 +34,6 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
@@ -61,7 +57,6 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { externalApiClient } from "@/app/services/externalApiClient";
 import { clientTokenStorage } from "@/lib/tokenStorage";
 import { internalApiClient } from "@/app/services/internalApiClient";
 import { useAuth } from "@/components/common/AuthContext";
@@ -74,21 +69,16 @@ const employeeRoutes = [
     url: "/ess/employee-dashboard",
     icon: LayoutDashboard,
   },
-  { title: "Job Profile", url: "/ess/job-profile", icon: Briefcase },
   { title: "Attendance", url: "/ess/attendance", icon: CalendarClock },
   { title: "Leave", url: "/ess/leave", icon: CalendarOff },
   { title: "Holidays", url: "/ess/holidays", icon: Calendar },
-  { title: "Salaries", url: "/ess/salary", icon: BadgeIndianRupee },
+  { title: "Job Profile", url: "/ess/job-profile", icon: Briefcase },
   { title: "Personal Details", url: "/ess/personal-details", icon: UserRound },
+  { title: "Salaries", url: "/ess/salary", icon: BadgeIndianRupee },
   { title: "User Settings", url: "/ess/user-settings", icon: Settings },
 ];
 
 const managerRoutes = [
-  {
-    title: "Manager Dashboard",
-    url: "/manager/manager-dashboard",
-    icon: LayoutDashboard,
-  },
   { title: "My Team", url: "/manager/my-team", icon: UsersRound },
 ];
 
@@ -115,6 +105,7 @@ const adminRoutes = [
     url: "/admin/admin-dashboard",
     icon: LayoutDashboard,
   },
+  { title: "Organization", url: "/admin/organization", icon: Building2 },
   { title: "Locations", url: "/admin/locations", icon: MapPin },
   { title: "Departments", url: "/admin/departments", icon: Building },
   { title: "Roles", url: "/admin/roles", icon: ShieldUser },
@@ -127,43 +118,54 @@ export const AppSidebar = () => {
   const [isHrManagerOpen, setIsHrManagerOpen] = useState(false);
   const [isEmployeeOpen, setIsEmployeeOpen] = useState(false);
   const [isManagerOpen, setIsManagerOpen] = useState(false);
-  const { setOpen, isMobile, setOpenMobile } = useSidebar();
+  const { setOpen, isMobile, setOpenMobile, open } = useSidebar();
   // Function to close sidebar on mobile when a link is clicked
   const handleLinkClick = () => {
     if (isMobile) {
       setOpenMobile(false);
     }
   };
-
-  //   console.log("user in AppSidebar", user);
   const { user } = useAuth();
-  console.log("user in AppSidebar", user, "roles:", user?.roles);
-
+  //   console.log("user in AppSidebar", user === null);
   // Removed user role checks - components should handle auth individually
+  let isUser = false;
   let isAdmin = false;
   let isHrManager = false;
   let isManager = false;
 
-  user?.roles?.map((role) => {
-    if (role.toLowerCase() === "admin") {
+  user?.roles?.forEach((role) => {
+    // Handle both string roles and object roles
+    const roleName =
+      typeof role === "string"
+        ? role
+        : role?.role_name || role?.name || role?.role || String(role);
+
+    const roleLower = roleName?.toLowerCase?.() || "";
+
+    if (roleLower === "user") {
+      isUser = true;
+    }
+    if (roleLower === "admin") {
       isAdmin = true;
     }
-    if (role.toLowerCase() === "hrmanager") {
+    if (roleLower === "hrmanager") {
       isHrManager = true;
     }
-    if (role.toLowerCase() === "manager") {
+    if (roleLower === "manager") {
       isManager = true;
     }
   });
 
-  console.log(
-    "isAdmin:",
-    isAdmin,
-    "isHrManager:",
-    isHrManager,
-    "isManager:",
-    isManager
-  );
+  //   console.log(
+  //     "isUser:",
+  //     isUser,
+  //     "isAdmin:",
+  //     isAdmin,
+  //     "isHrManager:",
+  //     isHrManager,
+  //     "isManager:",
+  //     isManager
+  //   );
 
   async function handleLogout() {
     // Close sidebar on mobile before logout
@@ -185,23 +187,16 @@ export const AppSidebar = () => {
     }
   }
 
-  // Function to close sidebar
-  const handleCloseSidebar = () => {
-    if (isMobile) {
-      setOpenMobile(false);
-    } else {
-      setOpen(false);
-    }
-  };
-
   return (
     <Sidebar collapsible="icon">
       {/* <SidebarTrigger /> */}
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton className="flex justify-between items-center">
-              <div className="flex items-center gap-2">
+        <SidebarMenu
+          className={`flex flex-row justify-between items-center gap-2`}
+        >
+          <SidebarMenuItem className={`${!open ? "hidden" : ""}`}>
+            <SidebarMenuButton>
+              <div className={`flex flex-row items-center gap-2`}>
                 <Image
                   src="/images/niyava-logo-100x100.png"
                   alt="logo"
@@ -212,81 +207,79 @@ export const AppSidebar = () => {
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
+          <SidebarTrigger />
         </SidebarMenu>
       </SidebarHeader>
       <SidebarSeparator className="ml-0" />
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Employee Self Service</SidebarGroupLabel>
-          <SidebarGroupContent>
-            {/* Main menu */}
-            {!user &&
-              publicRoutes.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild className="hover:cursor-pointer">
-                    <Link href={item.url} onClick={handleLinkClick}>
-                      <item.icon />
-                      <span>{item.title}</span>
+        {!user &&
+          publicRoutes.map((item) => (
+            <SidebarMenuItem key={item.title}>
+              <SidebarMenuButton asChild className="hover:cursor-pointer">
+                <Link href={item.url} onClick={handleLinkClick}>
+                  <item.icon />
+                  <span>{item.title}</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        {/* Employee Self Service */}
+        {user && isUser && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Employee Self Service</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <Link href="/" onClick={handleLinkClick}>
+                      <Home size={16} />
+                      <span>Home</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              ))}
-            {/* Employees section: role-based submenu */}
-            {
-              <>
-                <SidebarMenu>
+              </SidebarMenu>
+              <SidebarMenu>
+                <Collapsible
+                  open={isEmployeeOpen}
+                  onOpenChange={setIsEmployeeOpen}
+                  defaultOpen={false}
+                  className="group/collapsible"
+                >
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild>
-                      <Link href="/" onClick={handleLinkClick}>
-                        <Home size={16} />
-                        <span>Home</span>
-                      </Link>
-                    </SidebarMenuButton>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton>
+                        <UserRound size={16} />
+                        <span>Employee</span>
+                        <ChevronUp
+                          className={cn(
+                            "ml-auto transition-transform",
+                            isEmployeeOpen ? "" : "rotate-180",
+                            "group-data-[collapsible=icon]:hidden"
+                          )}
+                        />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
                   </SidebarMenuItem>
-                </SidebarMenu>
-                {/* Employee Group */}
-                <SidebarMenu>
-                  <Collapsible
-                    open={isEmployeeOpen}
-                    onOpenChange={setIsEmployeeOpen}
-                    defaultOpen={false}
-                    className="group/collapsible"
-                  >
-                    <SidebarMenuItem>
-                      <CollapsibleTrigger asChild>
-                        <SidebarMenuButton>
-                          <UserRound size={16} />
-                          <span>Employee</span>
-                          <ChevronUp
-                            className={cn(
-                              "ml-auto transition-transform",
-                              isEmployeeOpen ? "" : "rotate-180",
-                              "group-data-[collapsible=icon]:hidden"
-                            )}
-                          />
-                        </SidebarMenuButton>
-                      </CollapsibleTrigger>
-                    </SidebarMenuItem>
-                    <CollapsibleContent>
-                      <SidebarMenuSub>
-                        {employeeRoutes.map((item) => (
-                          <SidebarMenuSubItem key={item.title}>
-                            <SidebarMenuSubButton asChild>
-                              <Link href={item.url} onClick={handleLinkClick}>
-                                <item.icon size={16} />
-                                {item.title}
-                              </Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        ))}
-                      </SidebarMenuSub>
-                    </CollapsibleContent>
-                  </Collapsible>
-                </SidebarMenu>
-              </>
-            }
-          </SidebarGroupContent>
-        </SidebarGroup>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      {employeeRoutes.map((item) => (
+                        <SidebarMenuSubItem key={item.title}>
+                          <SidebarMenuSubButton asChild>
+                            <Link href={item.url} onClick={handleLinkClick}>
+                              <item.icon size={16} />
+                              {item.title}
+                            </Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      ))}
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </Collapsible>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+        {/* Manager */}
         {user && isManager && (
           <SidebarGroup>
             <SidebarGroupLabel>Manage Your Team</SidebarGroupLabel>

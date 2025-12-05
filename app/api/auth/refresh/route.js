@@ -5,26 +5,13 @@ import { serverTokenStorage } from "@/lib/tokenStorage";
 
 export async function POST(req) {
   try {
-    // Determine storage type from environment variable
-    const storageType = (
-      process.env.NEXT_PUBLIC_TOKEN_STORAGE_TYPE || "localStorage"
-    ).toLowerCase();
-    
+    // Get refresh token from request body (sessionStorage mode)
     let refreshToken;
-    
-    // Get refresh token based on storage type
-    if (storageType === "cookie") {
-      // Get refresh token from httpOnly cookie
-      refreshToken = await serverTokenStorage.getRefreshToken();
-    } else {
-      // Get refresh token from request body (localStorage/sessionStorage mode)
-      try {
-        const body = await req.json();
-        refreshToken = body.refresh_token || body.refreshToken;
-      } catch (error) {
-        // Request body might be empty or already consumed
-        console.warn("Could not read request body for refresh token:", error);
-      }
+    try {
+      const body = await req.json();
+      refreshToken = body.refresh_token || body.refreshToken;
+    } catch (error) {
+      console.warn("Could not read request body for refresh token:", error);
     }
 
     if (!refreshToken) {
@@ -58,23 +45,9 @@ export async function POST(req) {
     const accessToken = data.accessToken || data.access_token || data.token;
     const newRefreshToken = data.refreshToken || data.refresh_token;
 
-    // If using cookie storage, set httpOnly cookies
-    if (storageType === "cookie") {
-      const response = NextResponse.json({ success: true });
-      
-      if (accessToken) {
-        await serverTokenStorage.setAccessToken(accessToken, response);
-      }
-      if (newRefreshToken) {
-        await serverTokenStorage.setRefreshToken(newRefreshToken, response);
-      }
-      
-      return response;
-    }
-    
-    // For localStorage/sessionStorage, include tokens in response body
+    // Return tokens in response body for client to store in sessionStorage
     const responseData = { success: true };
-    
+
     if (accessToken) {
       responseData.accessToken = accessToken;
     }

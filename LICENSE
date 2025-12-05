@@ -1,21 +1,46 @@
-Proprietary License
+PROPRIETARY COMMERCIAL LICENSE
 
-Copyright (c) 2024 Niyava. All rights reserved.
+Copyright (c) 2024 Niyava Technologies Pvt. Ltd. All rights reserved.
 
-This software and associated documentation files (the "Software") are proprietary 
-and confidential. Unauthorized copying, modification, distribution, or use of this 
-Software, via any medium, is strictly prohibited without the express written 
-permission of Niyava.
+This software and associated documentation files (the "Software") are proprietary
+and confidential property of Niyava Technologies Pvt. Ltd.
+
+LICENSING TERMS:
+
+This Software is licensed, not sold. Your rights to use this Software are
+governed by a separate End User License Agreement (EULA) that you must accept
+prior to installation or use.
+
+Without a valid commercial license from Niyava Technologies Pvt. Ltd., you may NOT:
+
+- Install, copy, or use this Software
+- Modify, adapt, or create derivative works
+- Distribute, sublicense, lease, rent, or sell the Software
+- Reverse engineer, decompile, or disassemble the Software
+- Remove or alter any proprietary notices or labels
+
+COMMERCIAL LICENSING:
+
+To obtain a commercial license for this Software, please contact:
+
+Niyava Technologies Pvt. Ltd.
+Contact: Ravendra Kumar Singh
+Email: ravendra@niyava.com
+Website: https://niyava.com
+
+For enterprise licensing, custom deployments, or white-label options, please
+contact us for a custom quote.
 
 TERMS AND CONDITIONS:
 
 1. PROPRIETARY RIGHTS
-   This Software is the exclusive property of Niyava. All rights, title, and 
-   interest in and to the Software, including all intellectual property rights, 
-   remain with Niyava.
+   This Software is the exclusive property of Niyava Technologies Pvt. Ltd.
+   All rights, title, and interest in and to the Software, including all
+   intellectual property rights, remain with Niyava Technologies Pvt. Ltd.
 
 2. RESTRICTIONS
-   You may NOT:
+   Without a valid commercial license, you may NOT:
+
    - Copy, reproduce, or duplicate the Software
    - Modify, adapt, or create derivative works
    - Distribute, sublicense, lease, rent, or sell the Software
@@ -23,22 +48,28 @@ TERMS AND CONDITIONS:
    - Remove or alter any proprietary notices or labels
 
 3. CONFIDENTIALITY
-   The Software contains confidential and proprietary information. You agree to 
-   maintain the confidentiality of the Software and not disclose it to any third 
-   party without prior written consent from Niyava.
+   The Software contains confidential and proprietary information. You agree to
+   maintain the confidentiality of the Software and not disclose it to any third
+   party without prior written consent from Niyava Technologies Pvt. Ltd.
 
-4. NO WARRANTY
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+4. THIRD-PARTY COMPONENTS
+   This Software includes open-source components licensed under MIT, Apache 2.0,
+   and other permissive licenses. See THIRD_PARTY_LICENSES.md for details.
+   These components are used in compliance with their respective licenses and
+   do not affect the proprietary nature of this Software.
+
+5. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
 
-5. LIMITATION OF LIABILITY
-   IN NO EVENT SHALL NIYAVA BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
-   WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
-   IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+6. LIMITATION OF LIABILITY
+   IN NO EVENT SHALL NIYAVA TECHNOLOGIES PVT. LTD. BE LIABLE FOR ANY CLAIM,
+   DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+   ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+   DEALINGS IN THE SOFTWARE.
 
 For licensing inquiries, please contact:
 Ravendra Kumar Singh
 Email: ravendra@niyava.com
 Website: https://niyava.com
-

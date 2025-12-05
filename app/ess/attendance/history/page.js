@@ -12,18 +12,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import SelectMonth from "@/components/common/SelectMonth";
 import { Download } from "lucide-react";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
-import { formatDateToYYYYMMDD } from "@/lib/dateTimeUtil";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
 import { useAuth } from "@/components/common/AuthContext";
 import { externalApiClient } from "@/app/services/externalApiClient";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { formatTime24Hour } from "@/lib/dateTimeUtil";
+import { getTodayDate, formatDateToYYYYMMDD } from "@/lib/dateTimeUtil";
 
 const AttendanceHistoryPage = () => {
   const { user } = useAuth();
@@ -35,26 +32,36 @@ const AttendanceHistoryPage = () => {
     return `${year}-${month}`;
   });
   const [loading, setLoading] = useState(true);
+  const [showAdditionalColumns, setShowAdditionalColumns] = useState(false);
 
   // Fetch attendance history
   const fetchAttendanceHistory = useCallback(async (employeeId, month) => {
     try {
-      const startDate = `${month}-01`;
-      const lastDayOfMonth = new Date(
-        new Date(`${month}-01`).setMonth(
-          new Date(`${month}-01`).getMonth() + 1
-        ) - 1
-      );
-      const endDate = formatDateToYYYYMMDD(lastDayOfMonth);
-
-      const res = await externalApiClient.get(
-        `/attendance?empid=${employeeId}&start_date=${startDate}&end_date=${endDate}`
-      );
-      const data = Array.isArray(res.data)
-        ? res.data
-        : res.data?.attendance || res.data?.data || [];
-      setAttendanceHistory(data);
-      return data;
+      const url = `/employees/${employeeId}/calendar/attendance/monthly?month=${month}`;
+      const res = await externalApiClient.get(url);
+      const calendar = res.data?.calendar || [];
+      // Map calendar days to attendance records format
+      // Show all days including weekly offs and holidays
+      const attendanceRecords = calendar
+        .map((day) => ({
+          ...(day.attendance || {}),
+          date: day.date,
+          day_status: day.day_status,
+          calendar_reason: day.calendar_reason,
+          calendar_type: day.calendar_type,
+          leaves: day.leaves,
+          is_working_day: day.is_working_day,
+        }))
+        .filter((day) => {
+          return new Date(day.date) <= new Date(getTodayDate());
+        })
+        .sort((a, b) => {
+          // Sort by date in descending order (newest first)
+          return new Date(b.date) - new Date(a.date);
+        });
+      console.log("attendanceRecords", attendanceRecords);
+      setAttendanceHistory(attendanceRecords);
+      return attendanceRecords;
     } catch (error) {
       console.error("Error fetching attendance history:", error);
       setAttendanceHistory([]);
@@ -71,14 +78,31 @@ const AttendanceHistoryPage = () => {
     }
   }, [user?.empid, selectedMonth, fetchAttendanceHistory]);
 
-  const getStatusBadge = (status) => {
-    switch (status?.toUpperCase()) {
+  const getStatusBadge = (status, dayStatus, calendarType) => {
+    // Check if it's a holiday first (takes precedence)
+    if (calendarType === "HOLIDAY" || calendarType === "OPTIONAL_HOLIDAY") {
+      return <Badge className="bg-purple-500 text-white">Holiday</Badge>;
+    }
+
+    // Use day_status if available, otherwise fall back to status
+    const displayStatus = dayStatus || status;
+    switch (displayStatus?.toUpperCase()) {
       case "PRESENT":
       case "P":
         return <Badge className="bg-green-500 text-white">Present</Badge>;
       case "ABSENT":
       case "A":
-        return <Badge variant="destructive">Absent</Badge>;
+        return <Badge className="bg-red-500 text-white">Absent</Badge>;
+      case "ON_LEAVE":
+        return <Badge className="bg-blue-500 text-white">On Leave</Badge>;
+      case "LEAVE_PENDING":
+        return (
+          <Badge className="bg-orange-500 text-white">Leave Pending</Badge>
+        );
+      case "EXPECTED":
+        return <Badge className="bg-gray-500 text-white">Expected</Badge>;
+      case "NON_WORKING":
+        return <Badge className="bg-gray-500 text-white">Non-Working</Badge>;
       case "LATE":
         return <Badge className="bg-orange-500 text-white">Late</Badge>;
       case "HALF_DAY":
@@ -86,19 +110,17 @@ const AttendanceHistoryPage = () => {
       case "EARLY_LEAVE":
         return <Badge className="bg-blue-500 text-white">Early Leave</Badge>;
       default:
-        return <Badge variant="secondary">-</Badge>;
+        return <Badge className="bg-gray-500 text-white">-</Badge>;
     }
   };
 
-  const formatTime = (timeStr) => {
-    if (!timeStr) return "-";
+  const getDayName = (dateStr) => {
+    if (!dateStr) return "-";
     try {
-      return new Date(timeStr).toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+      const date = new Date(dateStr);
+      return date.toLocaleDateString("en-US", { weekday: "short" });
     } catch {
-      return timeStr;
+      return "-";
     }
   };
 
@@ -122,29 +144,11 @@ const AttendanceHistoryPage = () => {
           </p>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder="Select month" />
-            </SelectTrigger>
-            <SelectContent>
-              {Array.from({ length: 12 }, (_, i) => {
-                const date = new Date();
-                date.setMonth(date.getMonth() - i);
-                const year = date.getFullYear();
-                const month = String(date.getMonth() + 1).padStart(2, "0");
-                const monthStr = `${year}-${month}`;
-                const monthName = date.toLocaleDateString("en-US", {
-                  month: "long",
-                  year: "numeric",
-                });
-                return (
-                  <SelectItem key={monthStr} value={monthStr}>
-                    {monthName}
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+          <SelectMonth
+            value={selectedMonth}
+            onValueChange={setSelectedMonth}
+            placeholder="Select month"
+          />
           <Button variant="outline" size="sm">
             <Download className="mr-2 h-4 w-4" />
             Export
@@ -154,7 +158,22 @@ const AttendanceHistoryPage = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle>Attendance Records</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Attendance Records</CardTitle>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="show-additional"
+                checked={showAdditionalColumns}
+                onCheckedChange={setShowAdditionalColumns}
+              />
+              <Label
+                htmlFor="show-additional"
+                className="text-sm font-normal cursor-pointer"
+              >
+                Show additional columns
+              </Label>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -162,12 +181,20 @@ const AttendanceHistoryPage = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
+                  <TableHead>Day</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Clock In</TableHead>
                   <TableHead>Clock Out</TableHead>
                   <TableHead>Working Hours</TableHead>
-                  <TableHead>Break</TableHead>
-                  <TableHead>Overtime</TableHead>
+                  <TableHead>Late (min)</TableHead>
+                  <TableHead>Early Leave (min)</TableHead>
+                  {showAdditionalColumns && (
+                    <>
+                      <TableHead>Shift ID</TableHead>
+                      <TableHead>Break</TableHead>
+                      <TableHead>Overtime</TableHead>
+                    </>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -207,37 +234,98 @@ const AttendanceHistoryPage = () => {
                           : Number(record.break_minutes)) / 60;
                     }
                     breakHours = isNaN(breakHours) ? 0 : breakHours;
+
+                    // Get late and early leave minutes
+                    const lateMinutes =
+                      record.late_minutes ||
+                      record.lateMinutes ||
+                      record.late_duration_minutes ||
+                      0;
+                    const earlyLeaveMinutes =
+                      record.early_leave_minutes ||
+                      record.earlyLeaveMinutes ||
+                      record.early_leave_duration_minutes ||
+                      0;
+
+                    // Check if it's a non-working day or holiday
+                    // Keep future dates (EXPECTED status) showing working hours as before
+                    // Future working days have day_status: "EXPECTED" and should show working hours
+                    const isNonWorking =
+                      record.day_status === "EXPECTED"
+                        ? false
+                        : record.calendar_type === "HOLIDAY" ||
+                          record.calendar_type === "OPTIONAL_HOLIDAY" ||
+                          record.calendar_type === "WEEKLY_OFF" ||
+                          record.day_status === "NON_WORKING";
+
+                    const isWeeklyOff = record.calendar_type === "WEEKLY_OFF";
+
                     return (
-                      <TableRow key={index}>
+                      <TableRow
+                        key={index}
+                        className={isWeeklyOff ? "bg-purple-50" : ""}
+                      >
+                        <TableCell>{formatDateDisplay(record.date)}</TableCell>
+                        <TableCell>{getDayName(record.date)}</TableCell>
                         <TableCell>
-                          {formatDateDisplay(
-                            record.attendance_date ||
-                              record.date ||
-                              record.work_date
+                          {getStatusBadge(
+                            record.status,
+                            record.day_status,
+                            record.calendar_type
                           )}
                         </TableCell>
-                        <TableCell>{getStatusBadge(record.status)}</TableCell>
-                        <TableCell>{formatTime(clockIn)}</TableCell>
-                        <TableCell>{formatTime(clockOut)}</TableCell>
-                        <TableCell>{hours.toFixed(1)}h</TableCell>
+                        <TableCell>{formatTime24Hour(clockIn)}</TableCell>
+                        <TableCell>{formatTime24Hour(clockOut)}</TableCell>
                         <TableCell>
-                          {breakHours > 0 ? `${breakHours.toFixed(1)}h` : "-"}
-                        </TableCell>
-                        <TableCell>
-                          {record.overtime_hours
-                            ? `${(typeof record.overtime_hours === "string"
-                                ? parseFloat(record.overtime_hours)
-                                : Number(record.overtime_hours) || 0
-                              ).toFixed(1)}h`
+                          {clockIn && clockOut && hours > 0
+                            ? `${hours.toFixed(1)}h`
                             : "-"}
                         </TableCell>
+                        <TableCell>
+                          {lateMinutes > 0 ? (
+                            <Badge className="bg-orange-500 text-white">
+                              {lateMinutes} min
+                            </Badge>
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {earlyLeaveMinutes > 0 ? (
+                            <Badge className="bg-blue-500 text-white">
+                              {earlyLeaveMinutes} min
+                            </Badge>
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
+                        {showAdditionalColumns && (
+                          <>
+                            <TableCell>
+                              {record.shiftid || record.shift_id || "-"}
+                            </TableCell>
+                            <TableCell>
+                              {breakHours > 0
+                                ? `${breakHours.toFixed(1)}h`
+                                : "-"}
+                            </TableCell>
+                            <TableCell>
+                              {record.overtime_hours
+                                ? `${(typeof record.overtime_hours === "string"
+                                    ? parseFloat(record.overtime_hours)
+                                    : Number(record.overtime_hours) || 0
+                                  ).toFixed(1)}h`
+                                : "-"}
+                            </TableCell>
+                          </>
+                        )}
                       </TableRow>
                     );
                   })
                 ) : (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={showAdditionalColumns ? 11 : 8}
                       className="text-center py-8 text-gray-500"
                     >
                       No attendance records found for this month
@@ -254,4 +342,3 @@ const AttendanceHistoryPage = () => {
 };
 
 export default AttendanceHistoryPage;
-

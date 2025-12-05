@@ -18,10 +18,13 @@ import { externalApiClient } from "@/app/services/externalApiClient";
 import { Calendar } from "lucide-react";
 import OrganizationInfoCard from "@/components/common/OrganizationInfoCard";
 import SelectDepartment from "@/components/common/SelectDepartment";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
+import SelectLocation from "@/components/common/SelectLocation";
+import SelectFinancialYear from "@/components/common/SelectFinancialYear";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
 import { Spinner } from "@/components/ui/shadcn-io/spinner";
 import { useAuth } from "@/components/common/AuthContext";
 import { getErrorMessage } from "@/lib/emsUtil";
+import { getFYFromDate, getCurrentFinancialYear } from "@/lib/organizationUtil";
 
 const ManageHolidaysPage = () => {
   const [holidays, setHolidays] = useState([]);
@@ -29,10 +32,8 @@ const ManageHolidaysPage = () => {
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [year, setYear] = useState(new Date().getFullYear());
+  const [financialYear, setFinancialYear] = useState(getCurrentFinancialYear());
   const [calendarId, setCalendarId] = useState(null);
-  const [departments, setDepartments] = useState([]);
-  const [locations, setLocations] = useState([]);
 
   // Filter state for calendar scope
   const [filters, setFilters] = useState({
@@ -42,11 +43,15 @@ const ManageHolidaysPage = () => {
   });
 
   const [newHoliday, setNewHoliday] = useState({
+    scope: "organization",
     holiday_date: "",
     name: "",
     is_optional: "N",
     is_override: "N",
     description: "",
+    locationId: "",
+    departmentId: "",
+    financialYear: "",
   });
   const [draftHoliday, setDraftHoliday] = useState({});
   const { user } = useAuth();
@@ -58,36 +63,14 @@ const ManageHolidaysPage = () => {
     calendarIdRef.current = calendarId;
   }, [calendarId]);
 
-  // Fetch departments and locations
-  useEffect(() => {
-    fetchDepartments();
-    fetchLocations();
-  }, []);
-
-  const fetchDepartments = async () => {
-    try {
-      const res = await externalApiClient.get("/departments");
-      const deptData = res.data?.departments || res.data || [];
-      setDepartments(Array.isArray(deptData) ? deptData : []);
-    } catch (error) {
-      console.error("Error fetching departments:", error);
-    }
-  };
-
-  const fetchLocations = async () => {
-    try {
-      const res = await externalApiClient.get("/locations");
-      const locData = res.data?.locations || res.data || [];
-      setLocations(Array.isArray(locData) ? locData : []);
-    } catch (error) {
-      console.error("Error fetching locations:", error);
-    }
-  };
-
   // Fetch calendar_id for the selected scope
   const fetchCalendarId = useCallback(async () => {
+    if (!financialYear) {
+      return null;
+    }
+
     try {
-      let url = `/calendars?calendar_type=${filters.scope.toUpperCase()}&year=${year}`;
+      let url = `/calendars?calendar_type=${filters.scope.toUpperCase()}&financial_year=${financialYear}`;
 
       if (filters.scope === "location" && filters.locationId) {
         url += `&location_id=${filters.locationId}`;
@@ -98,7 +81,7 @@ const ManageHolidaysPage = () => {
       const res = await externalApiClient.get(url);
       const calendars = res.data?.calendars || res.data || [];
 
-      // Get the first calendar for the selected scope/year
+      // Get the first calendar for the selected scope/financial year
       if (calendars.length > 0) {
         const calendar = calendars[0];
         const id = calendar.calendar_id || calendar.id || calendar.calendarId;
@@ -111,12 +94,18 @@ const ManageHolidaysPage = () => {
       console.error("Error fetching calendar ID:", error);
       return null;
     }
-  }, [filters.scope, filters.locationId, filters.departmentId, year]);
+  }, [filters.scope, filters.locationId, filters.departmentId, financialYear]);
 
   // Fetch holidays with calendar_id
   const fetchHolidays = useCallback(
     async (forceResetCalendarId = false) => {
       if (!user?.empid) {
+        return;
+      }
+
+      if (!financialYear) {
+        setHolidays([]);
+        setLoading(false);
         return;
       }
 
@@ -155,7 +144,7 @@ const ManageHolidaysPage = () => {
 
         // Fetch holidays with calendar_id
         const res = await externalApiClient.get(
-          `/holidays?calendar_id=${currentCalendarId}&year=${year}`
+          `/holidays?calendar_id=${currentCalendarId}&financial_year=${financialYear}`
         );
         setHolidays(res.data?.holidays || res.data || []);
         setError("");
@@ -170,7 +159,7 @@ const ManageHolidaysPage = () => {
       }
     },
     [
-      year,
+      financialYear,
       user?.empid,
       fetchCalendarId,
       filters.scope,
@@ -199,18 +188,22 @@ const ManageHolidaysPage = () => {
     filters.scope,
     filters.locationId,
     filters.departmentId,
-    year,
+    financialYear,
     user?.empid,
   ]);
 
   const handleAddNew = () => {
     setAdding(true);
     setNewHoliday({
+      scope: filters.scope || "organization",
       holiday_date: "",
       name: "",
       is_optional: "N",
       is_override: "N",
       description: "",
+      locationId: filters.scope === "location" ? filters.locationId : "",
+      departmentId: filters.scope === "department" ? filters.departmentId : "",
+      financialYear: financialYear || getCurrentFinancialYear(),
     });
     setError("");
   };
@@ -218,22 +211,99 @@ const ManageHolidaysPage = () => {
   const handleCancelNew = () => {
     setAdding(false);
     setNewHoliday({
+      scope: "organization",
       holiday_date: "",
       name: "",
       is_optional: "N",
       is_override: "N",
       description: "",
+      locationId: "",
+      departmentId: "",
+      financialYear: "",
     });
     setError("");
   };
 
   const handleNewHolidayChange = (e) => {
     const { name, value } = e.target;
-    setNewHoliday((prev) => ({
-      ...prev,
+    const updates = {
+      ...newHoliday,
       [name]: value,
-    }));
+    };
+
+    // If holiday_date changes, automatically calculate and set financialYear
+    if (name === "holiday_date") {
+      if (value) {
+        const calculatedFY = getFYFromDate(value);
+        if (calculatedFY) {
+          updates.financialYear = calculatedFY;
+        }
+      } else {
+        // Clear financial year if date is cleared
+        updates.financialYear = "";
+      }
+    }
+
+    setNewHoliday(updates);
   };
+
+  // Fetch calendar_id for the new holiday form
+  const fetchCalendarIdForNewHoliday = useCallback(
+    async (holidayFinancialYear) => {
+      const fyToUse = holidayFinancialYear || financialYear;
+      if (!fyToUse) {
+        return null;
+      }
+
+      const scopeToUse = newHoliday.scope || filters.scope || "organization";
+
+      // Validate required IDs based on scope
+      const locationIdToUse = newHoliday.locationId || "";
+      const departmentIdToUse = newHoliday.departmentId || "";
+
+      if (scopeToUse === "location" && !locationIdToUse) {
+        return null;
+      }
+      if (scopeToUse === "department" && !departmentIdToUse) {
+        return null;
+      }
+
+      try {
+        let url = `/calendars?calendar_type=${scopeToUse.toUpperCase()}&financial_year=${fyToUse}`;
+
+        if (scopeToUse === "location" && locationIdToUse) {
+          url += `&location_id=${locationIdToUse}`;
+        } else if (scopeToUse === "department" && departmentIdToUse) {
+          url += `&department_id=${departmentIdToUse}`;
+        }
+
+        const res = await externalApiClient.get(url);
+        const calendars = res.data?.calendars || res.data || [];
+
+        // Get the first calendar for the selected scope/financial year
+        if (calendars.length > 0) {
+          const calendar = calendars[0];
+          const id = calendar.calendar_id || calendar.id || calendar.calendarId;
+          return id;
+        }
+
+        // If no calendar exists, return null (will need to create one)
+        return null;
+      } catch (error) {
+        console.error("Error fetching calendar ID for new holiday:", error);
+        return null;
+      }
+    },
+    [
+      filters.scope,
+      filters.locationId,
+      filters.departmentId,
+      financialYear,
+      newHoliday.scope,
+      newHoliday.locationId,
+      newHoliday.departmentId,
+    ]
+  );
 
   const handleSaveNew = async () => {
     if (
@@ -246,16 +316,45 @@ const ManageHolidaysPage = () => {
       return;
     }
 
-    // Validate calendar_id
-    if (!calendarId) {
-      setError("Please select a calendar scope first");
-      toast.error("Please select a calendar scope first");
+    const holidayFinancialYear = newHoliday.financialYear || financialYear;
+    if (!holidayFinancialYear) {
+      setError("Financial year is required");
+      toast.error("Financial year is required");
+      return;
+    }
+
+    const scopeToUse = newHoliday.scope || filters.scope || "organization";
+
+    // Validate required IDs based on scope
+    const locationIdToUse = newHoliday.locationId || "";
+    const departmentIdToUse = newHoliday.departmentId || "";
+
+    if (scopeToUse === "location" && !locationIdToUse) {
+      setError("Location is required");
+      toast.error("Location is required");
+      return;
+    }
+    if (scopeToUse === "department" && !departmentIdToUse) {
+      setError("Department is required");
+      toast.error("Department is required");
+      return;
+    }
+
+    // Fetch calendar_id for the new holiday
+    const holidayCalendarId = await fetchCalendarIdForNewHoliday(
+      holidayFinancialYear
+    );
+    if (!holidayCalendarId) {
+      setError(
+        "Unable to find calendar for the selected scope. Please check your selections."
+      );
+      toast.error("Unable to find calendar for the selected scope");
       return;
     }
 
     try {
       const res = await externalApiClient.post("/holidays", {
-        calendar_id: calendarId,
+        calendar_id: holidayCalendarId,
         name: newHoliday.name.trim(),
         holiday_date: newHoliday.holiday_date,
         is_optional: newHoliday.is_optional || "N",
@@ -382,23 +481,227 @@ const ManageHolidaysPage = () => {
   };
 
   return (
-    <div className="px-5 max-w-[1000px] mx-auto">
-      <h1 className="text-3xl text-center font-bold mb-3">Manage Holidays</h1>
+    <div className="container mx-auto max-w-7xl p-4 md:p-6">
+      {/* Header Section */}
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold mb-2">Manage Holidays</h1>
+        <p className="text-gray-600">
+          Create and manage holiday calendars for your organization, locations,
+          or departments
+        </p>
+      </div>
 
-      {/* Organization Info Card */}
-      <OrganizationInfoCard />
-
+      {/* Error Message */}
       {error && (
-        <div className="max-w-[1000px] mx-auto mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-600">
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-600">
           {error}
         </div>
       )}
 
-      <div className="max-w-[1200px] mx-auto">
-        <div className="flex justify-between items-center mb-4 flex-wrap gap-3">
-          <div className="flex items-center gap-3 flex-wrap">
+      {/* Add New Holiday Button */}
+      {!adding && (
+        <div className="mb-6">
+          <Button
+            onClick={handleAddNew}
+            disabled={editingId !== null}
+            className="w-full md:w-auto"
+          >
+            <Calendar className="h-4 w-4 mr-2" />
+            Add New Holiday
+          </Button>
+        </div>
+      )}
+
+      {/* Add New Holiday Form */}
+      {adding && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Add New Holiday</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="scope" className="text-sm font-medium">
+                  Scope <span className="text-red-500">*</span>
+                </Label>
+                <Select
+                  value={newHoliday.scope}
+                  onValueChange={(value) => {
+                    setNewHoliday({
+                      ...newHoliday,
+                      scope: value,
+                      locationId:
+                        value === "location" ? newHoliday.locationId : "",
+                      departmentId:
+                        value === "department" ? newHoliday.departmentId : "",
+                    });
+                  }}
+                >
+                  <SelectTrigger id="scope" className="w-full h-9">
+                    <SelectValue placeholder="Select scope" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="organization">Organization</SelectItem>
+                    <SelectItem value="location">Location</SelectItem>
+                    <SelectItem value="department">Department</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {newHoliday.scope === "location" && (
+                <div className="space-y-2">
+                  <SelectLocation
+                    value={newHoliday.locationId}
+                    onValueChange={(value) =>
+                      setNewHoliday({
+                        ...newHoliday,
+                        locationId: value,
+                      })
+                    }
+                    showLabel={true}
+                    label="Location"
+                    placeholder="Select location"
+                    required={true}
+                  />
+                </div>
+              )}
+              {newHoliday.scope === "department" && (
+                <div className="space-y-2">
+                  <SelectDepartment
+                    value={newHoliday.departmentId}
+                    onValueChange={(value) =>
+                      setNewHoliday({
+                        ...newHoliday,
+                        departmentId: value,
+                      })
+                    }
+                    showLabel={true}
+                    label="Department"
+                    placeholder="Select department"
+                    required={true}
+                  />
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="holiday_date" className="text-sm font-medium">
+                  Date <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  type="date"
+                  name="holiday_date"
+                  id="holiday_date"
+                  value={newHoliday.holiday_date}
+                  onChange={handleNewHolidayChange}
+                  required
+                  className="h-9"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="name" className="text-sm font-medium">
+                  Name <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  type="text"
+                  name="name"
+                  id="name"
+                  value={newHoliday.name}
+                  onChange={handleNewHolidayChange}
+                  placeholder="Enter holiday name"
+                  required
+                  className="h-9"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="financialYear" className="text-sm font-medium">
+                  Financial Year <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  type="text"
+                  id="financialYear"
+                  value={newHoliday.financialYear || ""}
+                  readOnly
+                  className="h-9 bg-gray-50"
+                  placeholder="Financial year will be auto-calculated from date"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="is_optional" className="text-sm font-medium">
+                  Optional
+                </Label>
+                <Select
+                  value={String(newHoliday.is_optional)}
+                  onValueChange={(value) =>
+                    setNewHoliday({
+                      ...newHoliday,
+                      is_optional: value,
+                    })
+                  }
+                >
+                  <SelectTrigger id="is_optional" className="w-full h-9">
+                    <SelectValue placeholder="Select option" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="N">No (Mandatory)</SelectItem>
+                    <SelectItem value="Y">Yes (Optional)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="is_override" className="text-sm font-medium">
+                  Override
+                </Label>
+                <Select
+                  value={String(newHoliday.is_override || "N")}
+                  onValueChange={(value) =>
+                    setNewHoliday({
+                      ...newHoliday,
+                      is_override: value,
+                    })
+                  }
+                >
+                  <SelectTrigger id="is_override" className="w-full h-9">
+                    <SelectValue placeholder="Select option" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="N">No</SelectItem>
+                    <SelectItem value="Y">Yes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="md:col-span-2 space-y-2">
+                <Label htmlFor="description" className="text-sm font-medium">
+                  Description
+                </Label>
+                <Input
+                  type="text"
+                  name="description"
+                  id="description"
+                  value={newHoliday.description || ""}
+                  onChange={handleNewHolidayChange}
+                  placeholder="Enter holiday description (optional)"
+                  className="h-9"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-6">
+              <Button onClick={handleSaveNew}>Save Holiday</Button>
+              <Button onClick={handleCancelNew} variant="outline">
+                Cancel
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Holidays List */}
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold mb-3">List of Holidays</h2>
+        {/* Filters Section */}
+        <div className="mb-6 pb-6 border-b">
+          <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
-              <Label className="text-sm whitespace-nowrap">Scope:</Label>
+              <Label className="text-sm font-medium whitespace-nowrap">
+                Scope:
+              </Label>
               <Select
                 value={filters.scope}
                 onValueChange={(value) => {
@@ -410,8 +713,9 @@ const ManageHolidaysPage = () => {
                       value === "department" ? prev.departmentId : "",
                   }));
                 }}
+                disabled={adding}
               >
-                <SelectTrigger className="h-8 w-[140px]">
+                <SelectTrigger className="h-9 w-[160px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -423,318 +727,214 @@ const ManageHolidaysPage = () => {
             </div>
 
             {filters.scope === "location" && (
-              <div className="flex items-center gap-2">
-                <Label className="text-sm whitespace-nowrap">Location:</Label>
-                <Select
-                  value={filters.locationId}
-                  onValueChange={(value) =>
-                    setFilters((prev) => ({ ...prev, locationId: value }))
-                  }
-                >
-                  <SelectTrigger className="h-8 w-[160px]">
-                    <SelectValue placeholder="Select location" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {locations.map((loc) => (
-                      <SelectItem
-                        key={loc.locationid || loc.id}
-                        value={String(loc.locationid || loc.id)}
-                      >
-                        {loc.name || loc.location_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <SelectLocation
+                value={filters.locationId}
+                onValueChange={(value) =>
+                  setFilters((prev) => ({ ...prev, locationId: value }))
+                }
+                showLabel={true}
+                label="Location:"
+                placeholder="Select location"
+                className="flex items-center gap-2"
+                disabled={adding}
+              />
             )}
 
             {filters.scope === "department" && (
               <div className="flex items-center gap-2">
-                <Label className="text-sm whitespace-nowrap">Dept:</Label>
-                <Select
+                <Label className="text-sm font-medium whitespace-nowrap">
+                  Department:
+                </Label>
+                <SelectDepartment
                   value={filters.departmentId}
+                  showLabel={false}
                   onValueChange={(value) =>
                     setFilters((prev) => ({ ...prev, departmentId: value }))
                   }
-                >
-                  <SelectTrigger className="h-8 w-[160px]">
-                    <SelectValue placeholder="Select department" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {departments.map((dept) => (
-                      <SelectItem
-                        key={dept.deptid || dept.id}
-                        value={String(dept.deptid || dept.id)}
-                      >
-                        {dept.name || dept.department_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  disabled={adding}
+                />
               </div>
             )}
 
             <div className="flex items-center gap-2">
-              <Label htmlFor="year" className="text-base font-semibold">
-                Year:
+              <Label className="text-sm font-medium whitespace-nowrap">
+                Financial Year:
               </Label>
-              <Input
-                type="number"
-                id="year"
-                value={year}
-                onChange={(e) =>
-                  setYear(parseInt(e.target.value) || new Date().getFullYear())
-                }
-                className="w-24"
-                min="2000"
-                max="2100"
+              <SelectFinancialYear
+                yearsAhead={1}
+                yearsBehind={1}
+                value={financialYear}
+                onValueChange={(value) => setFinancialYear(value)}
+                showLabel={false}
+                label="Financial Year:"
+                placeholder="Select financial year"
+                className="flex items-center gap-2"
+                id="financialYear"
+                disabled={adding}
               />
             </div>
           </div>
-          {!adding && (
-            <Button onClick={handleAddNew} disabled={editingId !== null}>
-              <Calendar className="h-4 w-4 mr-2" />
-              Add New Holiday
-            </Button>
-          )}
         </div>
 
-        {adding && (
-          <Card className="mb-4">
-            <CardHeader>
-              <CardTitle>Add New Holiday</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="holiday_date" className="mb-1">
-                    Date *
-                  </Label>
-                  <Input
-                    type="date"
-                    name="holiday_date"
-                    id="holiday_date"
-                    value={newHoliday.holiday_date}
-                    onChange={handleNewHolidayChange}
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="name" className="mb-1">
-                    Name *
-                  </Label>
-                  <Input
-                    type="text"
-                    name="name"
-                    id="name"
-                    value={newHoliday.name}
-                    onChange={handleNewHolidayChange}
-                    placeholder="Enter holiday name"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="is_optional" className="mb-1">
-                    Optional
-                  </Label>
-                  <Select
-                    value={String(newHoliday.is_optional)}
-                    onValueChange={(value) =>
-                      setNewHoliday({
-                        ...newHoliday,
-                        is_optional: value,
-                      })
-                    }
-                  >
-                    <SelectTrigger id="is_optional" className="w-full">
-                      <SelectValue placeholder="Select option" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="N">No (Mandatory)</SelectItem>
-                      <SelectItem value="Y">Yes (Optional)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="is_override" className="mb-1">
-                    Override
-                  </Label>
-                  <Select
-                    value={String(newHoliday.is_override || "N")}
-                    onValueChange={(value) =>
-                      setNewHoliday({
-                        ...newHoliday,
-                        is_override: value,
-                      })
-                    }
-                  >
-                    <SelectTrigger id="is_override" className="w-full">
-                      <SelectValue placeholder="Select option" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="N">No</SelectItem>
-                      <SelectItem value="Y">Yes</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="md:col-span-2">
-                  <Label htmlFor="description" className="mb-1">
-                    Description
-                  </Label>
-                  <Input
-                    type="text"
-                    name="description"
-                    id="description"
-                    value={newHoliday.description || ""}
-                    onChange={handleNewHolidayChange}
-                    placeholder="Enter holiday description (optional)"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2 mt-4">
-                <Button onClick={handleSaveNew}>Save</Button>
-                <Button onClick={handleCancelNew} variant="outline">
-                  Cancel
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
+        {/* Holidays Content */}
         {loading ? (
-          <Card>
-            <CardContent className="py-8 text-center">
-              <div className="flex flex-col items-center gap-4">
-                <Spinner size={32} />
-                <p className="text-gray-600">Loading holidays...</p>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="py-12 text-center">
+            <div className="flex flex-col items-center gap-4">
+              <Spinner size={32} />
+              <p className="text-gray-600">Loading holidays...</p>
+            </div>
+          </div>
         ) : holidays.length === 0 ? (
-          <Card>
-            <CardContent className="py-8 text-center text-gray-500">
-              No holidays found for {year}. Click "Add New Holiday" to create
-              one.
-            </CardContent>
-          </Card>
+          <div className="py-12 text-center">
+            <div className="flex flex-col items-center gap-3">
+              <Calendar className="h-12 w-12 text-gray-400" />
+              <p className="text-gray-500 text-lg font-medium">
+                No holidays found for {financialYear}
+              </p>
+              <p className="text-gray-400 text-sm">
+                Click "Add New Holiday" to create one.
+              </p>
+            </div>
+          </div>
         ) : (
-          <div className="space-y-3">
-            {holidays.map((holiday) => (
-              <Card key={holiday.id}>
-                <CardContent className="p-6">
-                  {editingId === holiday.id ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label className="mb-1">Date *</Label>
-                        <Input
-                          type="date"
-                          value={
-                            normalizeDateForInput(draftHoliday.holiday_date) ||
-                            ""
-                          }
-                          onChange={(e) =>
-                            setDraftHoliday({
-                              ...draftHoliday,
-                              holiday_date: e.target.value,
-                            })
-                          }
-                          required
-                        />
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">
+                Holidays ({holidays.length})
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {holidays.map((holiday) => (
+                <Card key={holiday.id}>
+                  <CardContent className="p-6">
+                    {editingId === holiday.id ? (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">
+                              Date <span className="text-red-500">*</span>
+                            </Label>
+                            <Input
+                              type="date"
+                              value={
+                                normalizeDateForInput(
+                                  draftHoliday.holiday_date
+                                ) || ""
+                              }
+                              disabled
+                              required
+                              className="h-9"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">
+                              Financial Year
+                            </Label>
+                            <Input
+                              type="text"
+                              value={financialYear || ""}
+                              disabled
+                              className="h-9"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">
+                              Name <span className="text-red-500">*</span>
+                            </Label>
+                            <Input
+                              value={draftHoliday.name || ""}
+                              onChange={(e) =>
+                                setDraftHoliday({
+                                  ...draftHoliday,
+                                  name: e.target.value,
+                                })
+                              }
+                              placeholder="Enter holiday name"
+                              required
+                              className="h-9"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">
+                              Optional
+                            </Label>
+                            <Select
+                              value={String(draftHoliday.is_optional || "N")}
+                              onValueChange={(value) =>
+                                setDraftHoliday({
+                                  ...draftHoliday,
+                                  is_optional: value,
+                                })
+                              }
+                            >
+                              <SelectTrigger className="w-full h-9">
+                                <SelectValue placeholder="Select option" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="N">
+                                  No (Mandatory)
+                                </SelectItem>
+                                <SelectItem value="Y">
+                                  Yes (Optional)
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">
+                              Override
+                            </Label>
+                            <Select
+                              value={String(draftHoliday.is_override || "N")}
+                              onValueChange={(value) =>
+                                setDraftHoliday({
+                                  ...draftHoliday,
+                                  is_override: value,
+                                })
+                              }
+                            >
+                              <SelectTrigger className="w-full h-9">
+                                <SelectValue placeholder="Select option" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="N">No</SelectItem>
+                                <SelectItem value="Y">Yes</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="md:col-span-2 space-y-2">
+                            <Label className="text-sm font-medium">
+                              Description
+                            </Label>
+                            <Input
+                              value={draftHoliday.description || ""}
+                              onChange={(e) =>
+                                setDraftHoliday({
+                                  ...draftHoliday,
+                                  description: e.target.value,
+                                })
+                              }
+                              placeholder="Enter holiday description (optional)"
+                              className="h-9"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2 pt-2">
+                          <Button onClick={() => handleSaveEdit(holiday)}>
+                            Save Changes
+                          </Button>
+                          <Button variant="outline" onClick={handleCancelEdit}>
+                            Cancel
+                          </Button>
+                        </div>
                       </div>
-                      <div>
-                        <Label className="mb-1">Name *</Label>
-                        <Input
-                          value={draftHoliday.name || ""}
-                          onChange={(e) =>
-                            setDraftHoliday({
-                              ...draftHoliday,
-                              name: e.target.value,
-                            })
-                          }
-                          placeholder="Enter holiday name"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <Label className="mb-1">Optional</Label>
-                        <Select
-                          value={String(draftHoliday.is_optional || "N")}
-                          onValueChange={(value) =>
-                            setDraftHoliday({
-                              ...draftHoliday,
-                              is_optional: value,
-                            })
-                          }
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select option" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="N">No (Mandatory)</SelectItem>
-                            <SelectItem value="Y">Yes (Optional)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label className="mb-1">Override</Label>
-                        <Select
-                          value={String(draftHoliday.is_override || "N")}
-                          onValueChange={(value) =>
-                            setDraftHoliday({
-                              ...draftHoliday,
-                              is_override: value,
-                            })
-                          }
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select option" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="N">No</SelectItem>
-                            <SelectItem value="Y">Yes</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="md:col-span-2">
-                        <Label className="mb-1">Description</Label>
-                        <Input
-                          value={draftHoliday.description || ""}
-                          onChange={(e) =>
-                            setDraftHoliday({
-                              ...draftHoliday,
-                              description: e.target.value,
-                            })
-                          }
-                          placeholder="Enter holiday description (optional)"
-                        />
-                      </div>
-                      <div className="flex gap-2 mt-4">
-                        <Button
-                          size="sm"
-                          onClick={() => handleSaveEdit(holiday)}
-                        >
-                          Save
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={handleCancelEdit}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-lg">
-                            {holiday.name}
-                          </h3>
-                          <p className="text-sm text-gray-600 mt-1">
-                            Date: {formatDateDisplay(holiday.holiday_date)}
-                          </p>
-                          <div className="flex gap-2 mt-2 flex-wrap">
+                    ) : (
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-center gap-3">
+                            <h3 className="font-semibold text-lg">
+                              {holiday.name}
+                            </h3>
                             <Badge
                               variant={
                                 holiday.is_optional === "Y" ||
@@ -753,8 +953,12 @@ const ManageHolidaysPage = () => {
                               <Badge variant="outline">Override</Badge>
                             )}
                           </div>
+                          <p className="text-sm text-gray-600">
+                            <span className="font-medium">Date:</span>{" "}
+                            {formatDateDisplay(holiday.holiday_date)}
+                          </p>
                           {holiday.description && (
-                            <p className="text-sm text-gray-600 mt-1">
+                            <p className="text-sm text-gray-600">
                               {holiday.description}
                             </p>
                           )}
@@ -778,11 +982,11 @@ const ManageHolidaysPage = () => {
                           </Button>
                         </div>
                       </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
         )}
       </div>

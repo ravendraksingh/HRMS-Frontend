@@ -24,24 +24,23 @@ import {
 import { externalApiClient } from "@/app/services/externalApiClient";
 import { toast } from "sonner";
 import { CalendarClock, Download, RefreshCw } from "lucide-react";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
-import { formatTime } from "@/lib/dateTimeUtil";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
+import { formatTime24Hour, getTodayDate } from "@/lib/dateTimeUtil";
 import { Spinner } from "@/components/ui/shadcn-io/spinner";
 
 export default function TeamAttendance({ teamMembers, managerId }) {
   const [loading, setLoading] = useState(true);
   const [attendance, setAttendance] = useState([]);
   const [filteredAttendance, setFilteredAttendance] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().split("T")[0]
-  );
+  const [selectedDate, setSelectedDate] = useState(getTodayDate());
   const [selectedEmployee, setSelectedEmployee] = useState("all");
   const [dateRange, setDateRange] = useState({
-    from: new Date().toISOString().split("T")[0],
-    to: new Date().toISOString().split("T")[0],
+    start_date: getTodayDate(),
+    end_date: getTodayDate(),
   });
   const [viewMode, setViewMode] = useState("today"); // 'today' or 'range'
 
+  console.log("teamMembers", teamMembers);
   useEffect(() => {
     if (teamMembers && teamMembers.length > 0) {
       fetchAttendance();
@@ -57,15 +56,15 @@ export default function TeamAttendance({ teamMembers, managerId }) {
       setLoading(true);
 
       // Use manager-specific attendance endpoint
-      let url = `/managers/${managerId}/attendance`;
+      let url = `/managers/${managerId}/employees/attendance`;
       const params = new URLSearchParams();
 
       if (viewMode === "today") {
-        params.append("from", selectedDate);
-        params.append("to", selectedDate);
+        params.append("start_date", selectedDate);
+        params.append("end_date", selectedDate);
       } else {
-        params.append("from", dateRange.from);
-        params.append("to", dateRange.to);
+        params.append("start_date", dateRange.start_date);
+        params.append("end_date", dateRange.end_date);
       }
 
       // Add employee filter if specific employee is selected
@@ -77,10 +76,13 @@ export default function TeamAttendance({ teamMembers, managerId }) {
 
       const res = await externalApiClient.get(url);
       const attendanceData = res.data?.attendance || res.data || [];
-      
-      // Ensure it's an array
-      const teamAttendance = Array.isArray(attendanceData) ? attendanceData : [];
 
+      // Ensure it's an array
+      const teamAttendance = Array.isArray(attendanceData)
+        ? attendanceData
+        : [];
+
+      console.log("teamAttendance", teamAttendance);
       setAttendance(teamAttendance);
     } catch (error) {
       console.error("Error fetching attendance:", error);
@@ -94,17 +96,15 @@ export default function TeamAttendance({ teamMembers, managerId }) {
     let filtered = [...attendance];
 
     if (selectedEmployee !== "all") {
-      filtered = filtered.filter(
-        (a) => (a.employee_id || a.id) === selectedEmployee
-      );
+      filtered = filtered.filter((a) => a.empid === selectedEmployee);
     }
 
     setFilteredAttendance(filtered);
   };
 
   const getStatusBadge = (record) => {
-    const clockIn = record.clock_in || record.clockin_time;
-    const clockOut = record.clock_out || record.clockout_time;
+    const clockIn = record.check_in_time;
+    const clockOut = record.check_out_time;
     const status = record.status?.toLowerCase();
 
     if (status === "present" || status === "p") {
@@ -126,10 +126,8 @@ export default function TeamAttendance({ teamMembers, managerId }) {
   };
 
   const getEmployeeName = (employeeId) => {
-    const member = teamMembers.find(
-      (m) => (m.employee_id || m.id) === employeeId
-    );
-    return member?.employee_name || member?.name || employeeId;
+    const member = teamMembers.find((m) => m.empid === employeeId);
+    return member?.name || `Employee ${employeeId}`;
   };
 
   const exportAttendance = () => {
@@ -143,12 +141,12 @@ export default function TeamAttendance({ teamMembers, managerId }) {
       "Clock Out",
     ];
     const rows = filteredAttendance.map((a) => [
-      getEmployeeName(a.employee_id || a.id),
-      a.employee_id || a.id,
-      a.date || selectedDate,
+      getEmployeeName(a.empid),
+      a.empid,
+      a.attendance_date || selectedDate,
       a.status || "-",
-      a.clock_in || a.clockin_time || "-",
-      a.clock_out || a.clockout_time || "-",
+      a.check_in_time || "-",
+      a.check_out_time || "-",
     ]);
 
     const csv = [headers, ...rows]
@@ -159,7 +157,7 @@ export default function TeamAttendance({ teamMembers, managerId }) {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `team-attendance-${selectedDate || dateRange.from}.csv`;
+    a.download = `team-attendance-${selectedDate || dateRange.start_date}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
@@ -172,7 +170,11 @@ export default function TeamAttendance({ teamMembers, managerId }) {
           <CardTitle>Filters</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div
+            className={`grid grid-cols-1 gap-4 mb-4 ${
+              viewMode === "range" ? "md:grid-cols-4" : "md:grid-cols-4"
+            }`}
+          >
             <div className="space-y-2">
               <Label>View Mode</Label>
               <Select
@@ -180,7 +182,7 @@ export default function TeamAttendance({ teamMembers, managerId }) {
                 onValueChange={(value) => {
                   setViewMode(value);
                   if (value === "today") {
-                    setSelectedDate(new Date().toISOString().split("T")[0]);
+                    setSelectedDate(getTodayDate());
                   }
                 }}
               >
@@ -209,9 +211,9 @@ export default function TeamAttendance({ teamMembers, managerId }) {
                   <Label>From Date</Label>
                   <Input
                     type="date"
-                    value={dateRange.from}
+                    value={dateRange.start_date}
                     onChange={(e) =>
-                      setDateRange({ ...dateRange, from: e.target.value })
+                      setDateRange({ ...dateRange, start_date: e.target.value })
                     }
                   />
                 </div>
@@ -219,9 +221,9 @@ export default function TeamAttendance({ teamMembers, managerId }) {
                   <Label>To Date</Label>
                   <Input
                     type="date"
-                    value={dateRange.to}
+                    value={dateRange.end_date}
                     onChange={(e) =>
-                      setDateRange({ ...dateRange, to: e.target.value })
+                      setDateRange({ ...dateRange, end_date: e.target.value })
                     }
                   />
                 </div>
@@ -240,27 +242,23 @@ export default function TeamAttendance({ teamMembers, managerId }) {
                 <SelectContent>
                   <SelectItem value="all">All Employees</SelectItem>
                   {teamMembers.map((member) => (
-                    <SelectItem
-                      key={member.employee_id || member.id}
-                      value={String(member.employee_id || member.id)}
-                    >
+                    <SelectItem key={member.empid} value={String(member.empid)}>
                       {member.employee_name || member.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="flex items-end gap-2">
-              <Button onClick={fetchAttendance} variant="outline" size="default">
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Refresh
-              </Button>
-              <Button onClick={exportAttendance} variant="outline" size="default">
-                <Download className="mr-2 h-4 w-4" />
-                Export
-              </Button>
-            </div>
+          </div>
+          <div className="flex items-end gap-2">
+            <Button onClick={fetchAttendance} variant="outline" size="default">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh
+            </Button>
+            <Button onClick={exportAttendance} variant="outline" size="default">
+              <Download className="mr-2 h-4 w-4" />
+              Export
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -285,8 +283,8 @@ export default function TeamAttendance({ teamMembers, managerId }) {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Employee</TableHead>
                     <TableHead>Employee ID</TableHead>
+                    <TableHead>Name</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Clock In</TableHead>
@@ -296,47 +294,25 @@ export default function TeamAttendance({ teamMembers, managerId }) {
                 </TableHeader>
                 <TableBody>
                   {filteredAttendance.map((record, index) => {
-                    const clockIn = record.clock_in || record.clockin_time;
-                    const clockOut = record.clock_out || record.clockout_time;
-                    let workingHours = "-";
-
-                    if (clockIn && clockOut) {
-                      const start = new Date(clockIn);
-                      const end = new Date(clockOut);
-                      const diff = end - start;
-                      const hours = Math.floor(diff / (1000 * 60 * 60));
-                      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                      workingHours = `${hours}h ${minutes}m`;
-                    } else if (clockIn) {
-                      const start = new Date(clockIn);
-                      const now = new Date();
-                      const diff = now - start;
-                      const hours = Math.floor(diff / (1000 * 60 * 60));
-                      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                      workingHours = `${hours}h ${minutes}m (ongoing)`;
-                    }
-
                     return (
                       <TableRow key={index}>
-                        <TableCell className="font-medium">
-                          {getEmployeeName(record.employee_id || record.id)}
-                        </TableCell>
-                        <TableCell>{record.employee_id || record.id}</TableCell>
+                        <TableCell>{record.empid}</TableCell>
+                        <TableCell>{getEmployeeName(record.empid)||"-"}</TableCell>
                         <TableCell>
-                          {formatDateDisplay(record.date || selectedDate)}
+                          {formatDateDisplay(record.attendance_date)}
                         </TableCell>
                         <TableCell>{getStatusBadge(record)}</TableCell>
                         <TableCell>
-                          {clockIn
-                            ? formatTime(clockIn, "hh:mm a")
+                          {record.check_in_time
+                            ? formatTime24Hour(record.check_in_time)
                             : "-"}
                         </TableCell>
                         <TableCell>
-                          {clockOut
-                            ? formatTime(clockOut, "hh:mm a")
+                          {record.check_out_time
+                            ? formatTime24Hour(record.check_out_time)
                             : "-"}
                         </TableCell>
-                        <TableCell>{workingHours}</TableCell>
+                        <TableCell>{record.total_work_hours}</TableCell>
                       </TableRow>
                     );
                   })}
@@ -354,4 +330,3 @@ export default function TeamAttendance({ teamMembers, managerId }) {
     </div>
   );
 }
-

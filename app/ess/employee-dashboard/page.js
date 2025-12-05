@@ -6,22 +6,21 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import {
-  CalendarClock,
   Calendar,
   Clock,
   TrendingUp,
   UserCheck,
   CalendarOff,
   AlertCircle,
-  CheckCircle2,
-  XCircle,
   ArrowRight,
   Gift,
   RefreshCw,
+  CalendarClock,
 } from "lucide-react";
+import TodaysAttendance from "@/components/attendance/TodaysAttendance";
 import { externalApiClient } from "@/app/services/externalApiClient";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
-import { formatTime12Hour } from "@/lib/dateTimeUtil";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
+import { getTodayDate, getCurrentYear } from "@/lib/dateTimeUtil";
 import { toast } from "sonner";
 import { Spinner } from "@/components/ui/shadcn-io/spinner";
 import { useAuth } from "@/components/common/AuthContext";
@@ -65,117 +64,71 @@ const EmployeeDashboardPage = () => {
         setLoading(true);
       }
       setError(null);
-
-      const today = new Date().toISOString().split("T")[0];
-      const currentMonth = new Date().toISOString().slice(0, 7);
-      const currentYear = new Date().getFullYear();
-
       // Fetch today's attendance
       try {
         const attendanceRes = await externalApiClient.get(
-          `/attendance?attendance_date=${today}&empid=${employeeId}`
+          `/employees/${employeeId}/attendance/today`
         );
-        const attendanceArray = attendanceRes.data?.attendance || [];
-        const attendanceData = attendanceArray?.[0] || null;
-        setStats((prev) => ({ ...prev, todayAttendance: attendanceData }));
-      } catch (e) {
-        // Don't show error toast for optional data
-      }
-
-      // Fetch leave summary
-      try {
-        const leaveSummaryRes = await externalApiClient.get(
-          `/employees/${employeeId}/leaves/summary?year=${currentYear}`
-        );
-        const leaveSummaryData = leaveSummaryRes.data || {};
-
-        // Extract totals from summary
-        const totals = leaveSummaryData.totals || {};
-        const summaryByType = leaveSummaryData.summary_by_type || [];
-
-        // Calculate leave balance from totals
-        const leaveBalance = {
-          total: totals.available || 0,
-          used: totals.taken || 0,
-          pending: totals.pending || 0,
-          remaining: (totals.available || 0) - (totals.taken || 0),
-        };
-
+        console.log("attendanceRes", attendanceRes.data);
+        const todayData = attendanceRes.data;
+        const attendanceData = todayData?.attendance || null;
         setStats((prev) => ({
           ...prev,
-          leaveSummary: leaveSummaryData,
-          leaveBalance: leaveBalance,
+          todayAttendance: attendanceData,
+          todayData: todayData,
         }));
       } catch (e) {
-        console.error("Error fetching leave summary:", e);
         // Don't show error toast for optional data
       }
 
       // Fetch pending leaves for the pending leaves section
       try {
+        // Use the same endpoint pattern as the leave page
         const leavesRes = await externalApiClient.get(
-          `/leaves?empid=${employeeId}&status=pending`
+          `/employees/${employeeId}/leaves?status=pending`
         );
-        const leavesData = leavesRes.data?.leaves || leavesRes.data || [];
-        const pendingLeaves = Array.isArray(leavesData)
-          ? leavesData.filter((l) => {
-              const status = (l.status || "").toLowerCase();
-              return status === "pending";
-            })
-          : [];
+        const leavesData = leavesRes.data?.leaves || [];
+        const pendingLeaves = leavesData;
+
+        // Sort by date (most recent first) and take first 5
+        const sortedPendingLeaves = pendingLeaves
+          .sort((a, b) => {
+            const dateA = new Date(a.from_date || a.start_date || 0);
+            const dateB = new Date(b.from_date || b.start_date || 0);
+            return dateB - dateA;
+          })
+          .slice(0, 5);
 
         setStats((prev) => ({
           ...prev,
-          pendingLeaves: pendingLeaves.slice(0, 5),
+          pendingLeaves: sortedPendingLeaves,
         }));
       } catch (e) {
+        console.error("Error fetching pending leaves:", e);
         // Don't show error toast for optional data
       }
 
       // Fetch upcoming holidays
       try {
         const holidaysRes = await externalApiClient.get(
-          `/holidays?year=${currentYear}`
+          `/employees/${employeeId}/holidays`
         );
-        const holidaysData = holidaysRes.data?.holidays || [];
-
-        const upcoming = holidaysData
-          .filter((h) => {
-            const holidayDate = new Date(h.holiday_date || h.date);
-            return holidayDate >= new Date();
-          })
-          .sort((a, b) => {
-            const dateA = new Date(a.holiday_date || a.date);
-            const dateB = new Date(b.holiday_date || b.date);
-            return dateA - dateB;
-          })
-          .slice(0, 5);
-
-        setStats((prev) => ({ ...prev, upcomingHolidays: upcoming }));
+        let holidaysData = holidaysRes.data?.holidays || [];
+        let filteredHolidays = holidaysData.filter((h) => {
+          const holidayDate = new Date(h.holiday_date);
+          return holidayDate >= new Date();
+        });
+        filteredHolidays = filteredHolidays.sort((a, b) => {
+          const dateA = new Date(a.holiday_date);
+          const dateB = new Date(b.holiday_date);
+          return dateA - dateB;
+        });
+        filteredHolidays = filteredHolidays.slice(0, 5);
+        setStats((prev) => ({ ...prev, upcomingHolidays: filteredHolidays }));
       } catch (e) {
+        console.error("Error fetching holidays:", e);
         // Don't show error toast for optional data
-      }
-
-      // Fetch monthly attendance summary
-      try {
-        const monthlyRes = await externalApiClient.get(
-          `/reports/attendance/monthly?month=${currentMonth}&empid=${employeeId}`
-        );
-        const monthlyData = monthlyRes.data || {};
-        console.log("monthlyData", monthlyData);
-        const daysPresent = monthlyData?.present_days || 0;
-        setStats((prev) => ({
-          ...prev,
-          monthlyAttendance: daysPresent,
-        }));
-      } catch (e) {
-        console.error("Error fetching monthly attendance:", e);
-        console.error("Error details:", e?.response?.data);
-        // Set default value on error
-        setStats((prev) => ({
-          ...prev,
-          monthlyAttendance: 0,
-        }));
+        setStats((prev) => ({ ...prev, upcomingHolidays: [] }));
       }
     } catch (error) {
       const errorMessage =
@@ -194,19 +147,69 @@ const EmployeeDashboardPage = () => {
     fetchDashboardData(true);
   };
 
+  // Get attendance status based on todayData
   const getAttendanceStatus = () => {
-    if (!stats.todayAttendance)
-      return { status: "not_marked", label: "Not Marked", color: "secondary" };
-    if (
-      stats.todayAttendance.check_in_time &&
-      !stats.todayAttendance.check_out_time
-    )
+    const data = stats.todayData;
+    if (!data) {
+      return {
+        status: "not_marked",
+        label: "Not Clocked In",
+        color: "secondary",
+      };
+    }
+
+    // Check day status from API
+    const dayStatus = data.day_status;
+    const attendance = data.attendance;
+    const leave = data.leave;
+
+    // Handle leave pending status
+    if (dayStatus === "LEAVE_PENDING" && leave) {
+      return {
+        status: "leave_pending",
+        label: "Leave Pending",
+        color: "secondary",
+        leave: leave,
+      };
+    }
+
+    // Handle on leave status
+    if (dayStatus === "ON_LEAVE" && leave) {
+      return {
+        status: "on_leave",
+        label: "On Leave",
+        color: "default",
+        leave: leave,
+      };
+    }
+
+    // Handle attendance status
+    if (!attendance) {
+      if (dayStatus === "EXPECTED") {
+        return {
+          status: "not_marked",
+          label: "Not Clocked In",
+          color: "secondary",
+        };
+      }
+      return {
+        status: "absent",
+        label: "Absent",
+        color: "destructive",
+      };
+    }
+
+    // Use check_in_time and check_out_time from attendance
+    const clockInTime = attendance.check_in_time;
+    const clockOutTime = attendance.check_out_time;
+
+    if (clockInTime && !clockOutTime) {
       return { status: "present", label: "Present", color: "default" };
-    if (
-      stats.todayAttendance.check_in_time &&
-      stats.todayAttendance.check_out_time
-    )
+    }
+    if (clockInTime && clockOutTime) {
       return { status: "completed", label: "Completed", color: "default" };
+    }
+
     return { status: "absent", label: "Absent", color: "destructive" };
   };
 
@@ -258,7 +261,7 @@ const EmployeeDashboardPage = () => {
         <div>
           <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
           <p className="text-gray-600">
-            Welcome back, {user?.employee_name || user?.name || "User"}!
+            Welcome back, {user?.employee_name || "User"}!
           </p>
         </div>
         <Button
@@ -288,167 +291,14 @@ const EmployeeDashboardPage = () => {
         </div>
       )}
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">
-              Today's Status
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-2xl font-bold">{attendanceStatus.label}</p>
-                {stats.todayAttendance?.check_in_time ? (
-                  <div className="mt-1 space-y-0.5">
-                    <p className="text-xs text-gray-600">
-                      In:{" "}
-                      {formatTime12Hour(stats.todayAttendance.check_in_time)}
-                    </p>
-                    {stats.todayAttendance?.check_out_time && (
-                      <p className="text-xs text-gray-600">
-                        Out:{" "}
-                        {formatTime12Hour(stats.todayAttendance.check_out_time)}
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-500 mt-1">Not clocked in</p>
-                )}
-              </div>
-              <div
-                className={`p-3 rounded-full ml-4 ${
-                  attendanceStatus.status === "present" ||
-                  attendanceStatus.status === "completed"
-                    ? "bg-green-100"
-                    : attendanceStatus.status === "not_marked"
-                    ? "bg-gray-100"
-                    : "bg-red-100"
-                }`}
-              >
-                {attendanceStatus.status === "present" ||
-                attendanceStatus.status === "completed" ? (
-                  <CheckCircle2 className="h-6 w-6 text-green-600" />
-                ) : attendanceStatus.status === "not_marked" ? (
-                  <Clock className="h-6 w-6 text-gray-600" />
-                ) : (
-                  <XCircle className="h-6 w-6 text-red-600" />
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">
-              Leave Balance
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-2xl font-bold">
-                  {stats.leaveBalance?.remaining !== undefined
-                    ? stats.leaveBalance.remaining
-                    : stats.leaveBalance?.total !== undefined
-                    ? stats.leaveBalance.total
-                    : "N/A"}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {stats.leaveBalance?.total !== undefined
-                    ? `${
-                        stats.leaveBalance.remaining !== undefined
-                          ? stats.leaveBalance.remaining
-                          : stats.leaveBalance.total
-                      } of ${stats.leaveBalance.total} days available`
-                    : "Loading..."}
-                </p>
-                {stats.leaveBalance?.total &&
-                  stats.leaveBalance?.total > 0 &&
-                  stats.leaveBalance?.remaining !== undefined && (
-                    <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-blue-600 h-2 rounded-full transition-all"
-                        style={{
-                          width: `${Math.min(
-                            100,
-                            (stats.leaveBalance.remaining /
-                              stats.leaveBalance.total) *
-                              100
-                          )}%`,
-                        }}
-                      />
-                    </div>
-                  )}
-                {stats.leaveBalance && (
-                  <div className="mt-2 flex gap-2 text-xs">
-                    {stats.leaveBalance.used !== undefined && (
-                      <span className="text-gray-600">
-                        Used: {stats.leaveBalance.used}
-                      </span>
-                    )}
-                    {stats.leaveBalance.pending !== undefined &&
-                      stats.leaveBalance.pending > 0 && (
-                        <span className="text-orange-600">
-                          Pending: {stats.leaveBalance.pending}
-                        </span>
-                      )}
-                  </div>
-                )}
-              </div>
-              <div className="p-3 rounded-full bg-blue-100 ml-4">
-                <CalendarOff className="h-6 w-6 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">
-              This Month
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-2xl font-bold">{stats.monthlyAttendance}</p>
-                <p className="text-xs text-gray-500 mt-1">Days Present</p>
-                {stats.todayAttendance?.check_in_time && (
-                  <p className="text-xs text-green-600 mt-1 font-medium">
-                    Today: Present
-                  </p>
-                )}
-              </div>
-              <div className="p-3 rounded-full bg-purple-100 ml-4">
-                <TrendingUp className="h-6 w-6 text-purple-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">
-              Pending Leaves
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-2xl font-bold">
-                  {stats.pendingLeaves.length}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">Awaiting approval</p>
-              </div>
-              <div className="p-3 rounded-full bg-orange-100">
-                <AlertCircle className="h-6 w-6 text-orange-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Today's Status Card */}
+      <div className="mb-6">
+        <TodaysAttendance
+          todayData={stats.todayData}
+          showActions={true}
+          showHeader={true}
+          onRefresh={handleRefresh}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -524,7 +374,7 @@ const EmployeeDashboardPage = () => {
                     className="flex items-center justify-between p-2 border rounded"
                   >
                     <div>
-                      <p className="font-medium">
+                      <p className="text-sm font-semibold">
                         {holiday.name || holiday.holiday_name}
                       </p>
                       <p className="text-sm text-gray-500">
@@ -571,9 +421,9 @@ const EmployeeDashboardPage = () => {
                     className="flex items-center justify-between p-2 border rounded"
                   >
                     <div>
-                      <p className="font-medium">
-                        {formatDateDisplay(leave.from_date || leave.start_date)}{" "}
-                        - {formatDateDisplay(leave.to_date || leave.end_date)}
+                      <p className="text-sm">
+                        {formatDateDisplay(leave.start_date)}-{" "}
+                        {formatDateDisplay(leave.end_date)}
                       </p>
                       <p className="text-sm text-gray-500">
                         {leave.leave_type || leave.type || "Leave"} •{" "}

@@ -1,15 +1,16 @@
+"use client";
+
+import RouteGuard from "@/components/common/RouteGuard";
+
 /**
- * HR Route Group Layout
- * Server-side protection for all HR routes
- * Requires HR Manager or Admin role to access
+ * HR Layout - Protects all /hr/* routes
+ * Requires: HRMANAGER or ADMIN role
  */
-
-import { requireRole } from "@/lib/serverAuth";
-
-export default async function HRLayout({ children }) {
-  // Require HR Manager or Admin role
-  await requireRole(["hrmanager", "admin"]);
-  
-  return <>{children}</>;
+export default function HRLayout({ children }) {
+  return (
+    <RouteGuard requiredRoles={["HRMANAGER", "ADMIN"]}>
+      {children}
+    </RouteGuard>
+  );
 }
 

@@ -21,8 +21,11 @@ import {
 } from "lucide-react";
 import OrganizationInfoCard from "@/components/common/OrganizationInfoCard";
 import { cn } from "@/lib/utils";
+import { getTodayDate, getCurrentYear } from "@/lib/dateTimeUtil";
+import { useAuth } from "@/components/common/AuthContext";
 
 const MonthlyCalendarPage = () => {
+  const { user } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [holidays, setHolidays] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -188,7 +191,7 @@ const MonthlyCalendarPage = () => {
     if (!date) return "";
     const dayType = getDayType(date);
     const dateStr = date.toISOString().split("T")[0];
-    const isToday = dateStr === new Date().toISOString().split("T")[0];
+    const isToday = dateStr === getTodayDate();
     const isSelected =
       selectedDay && selectedDay.toISOString().split("T")[0] === dateStr;
 
@@ -286,7 +289,7 @@ const MonthlyCalendarPage = () => {
                 </SelectTrigger>
                 <SelectContent>
                   {Array.from({ length: 24 }, (_, i) => {
-                    const y = new Date().getFullYear() - 1 + i;
+                    const y = getCurrentYear() - 1 + i;
                     return monthNames.map((m, idx) => (
                       <SelectItem
                         key={`${y}-${idx + 1}`}

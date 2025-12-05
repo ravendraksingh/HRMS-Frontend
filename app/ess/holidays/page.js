@@ -1,195 +1,176 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
-import { Input } from "@/components/ui/input";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { externalApiClient } from "@/app/services/externalApiClient";
-import { Calendar } from "lucide-react";
-import OrganizationInfoCard from "@/components/common/OrganizationInfoCard";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
+import { Calendar, CalendarDays, AlertCircle, Sparkles } from "lucide-react";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
 import { Spinner } from "@/components/ui/shadcn-io/spinner";
 import { useAuth } from "@/components/common/AuthContext";
 import { getErrorMessage } from "@/lib/emsUtil";
+import { Input } from "@/components/ui/input";
+import { getCurrentFinancialYear } from "@/lib/organizationUtil";
 
 const HolidaysPage = () => {
   const [holidays, setHolidays] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [calendarId, setCalendarId] = useState(null);
   const { user } = useAuth();
-  const calendarIdRef = useRef(calendarId);
-  const fetchHolidaysRef = useRef();
+  const financialYear = getCurrentFinancialYear();
 
-  // Keep ref in sync with state
-  useEffect(() => {
-    calendarIdRef.current = calendarId;
-  }, [calendarId]);
-
-  // Resolve employee calendar to get calendar_id
-  const resolveEmployeeCalendar = useCallback(async () => {
-    if (!user?.empid) {
-      return null;
-    }
+  const fetchHolidays = useCallback(async () => {
     try {
+      setLoading(true);
       const res = await externalApiClient.get(
-        `/calendars/resolve/${user.empid}?year=${year}`
+        `/employees/${user?.empid}/holidays`
       );
-      // The response should contain calendar information
-      // Try to extract calendar_id from the resolved calendar
-      const calendarData = res.data;
-      // Handle different response structures
-      let calendarId = null;
-      calendarId = calendarData?.calendar?.source_calendars[0]?.calendar_id;
-      return calendarId;
+      const holidaysData = res.data?.holidays || [];
+      //   console.log(holidaysData);
+      holidaysData.sort((a, b) => {
+        const dateA = new Date(a.holiday_date || a.date);
+        const dateB = new Date(b.holiday_date || b.date);
+        return dateB - dateA;
+      });
+      setHolidays(holidaysData);
+      setError("");
     } catch (e) {
-      const errorMessage = getErrorMessage(e, "Error resolving employee calendar");
-      toast.error(errorMessage);
-      return null;
+      console.error("Error fetching holidays:", e);
+      const errorMessage = getErrorMessage(e, "Error fetching holidays");
+      setError(errorMessage);
+      toast.error(`Failed to load holidays: ${errorMessage}`);
+      setHolidays([]);
+    } finally {
+      setLoading(false);
     }
-  }, [user?.empid, year]);
-
-  
-  const fetchHolidays = useCallback(
-    async (forceResetCalendarId = false) => {
-      try {
-        setLoading(true);
-        let currentCalendarId = forceResetCalendarId ? null : calendarIdRef.current;
-        if (!currentCalendarId) {
-          currentCalendarId = await resolveEmployeeCalendar();
-          if (currentCalendarId) {
-            setCalendarId(currentCalendarId);
-            calendarIdRef.current = currentCalendarId;
-          } else {
-            setError("Unable to resolve calendar for employee");
-            setHolidays([]);
-            setLoading(false);
-            return;
-          }
-        }
-
-        // Fetch holidays with calendar_id
-        const res = await externalApiClient.get(
-          `/holidays?calendar_id=${currentCalendarId}&year=${year}`
-        );
-        setHolidays(res.data?.holidays || res.data || []);
-        setError("");
-      } catch (e) {
-        console.error("Error fetching holidays:", e);
-        const errorMessage =
-          e?.response?.data?.error ||
-          e?.response?.data?.message ||
-          e?.message ||
-          "Error fetching holidays";
-        setError(errorMessage);
-        toast.error(`Failed to load holidays: ${errorMessage}`);
-        setHolidays([]);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [year, user?.empid, resolveEmployeeCalendar]
-  );
+  }, [user?.empid]);
 
   // Keep fetchHolidays ref in sync
   useEffect(() => {
-    fetchHolidaysRef.current = fetchHolidays;
-  }, [fetchHolidays]);
+    fetchHolidays();
+  }, []);
 
   useEffect(() => {
-    // Reset calendar_id when year changes and fetch holidays
+    // Reset calendar_id when financial year changes and fetch holidays
     if (!user?.empid) {
       return;
     }
-
-    setCalendarId(null);
-    calendarIdRef.current = null;
-    if (fetchHolidaysRef.current) {
-      fetchHolidaysRef.current(true);
-    }
-  }, [year, user?.empid]);
+  }, [user?.empid]);
 
   return (
-    <div className="px-4 sm:px-5 max-w-[1000px] mx-auto mb-[50px]">
-      <h1 className="text-2xl sm:text-3xl text-center font-bold mb-3">Holidays</h1>
-
-      {/* Organization Info Card */}
-      <OrganizationInfoCard />
-
-      {error && (
-        <div className="max-w-[1000px] mx-auto mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm sm:text-base text-red-600">
-          {error}
-        </div>
-      )}
-
-      <div className="max-w-[1200px] mx-auto">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <Label htmlFor="year" className="text-sm sm:text-base font-semibold whitespace-nowrap">
-              Year:
-            </Label>
-            <Input
-              type="number"
-              id="year"
-              value={year}
-              onChange={(e) =>
-                setYear(parseInt(e.target.value) || new Date().getFullYear())
-              }
-              className="w-24"
-              min="2000"
-              max="2100"
-            />
+    <div className="container mx-auto max-w-7xl px-4 sm:px-6 py-6 mb-[50px]">
+      {/* Header Section */}
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="p-2 bg-primary/10 rounded-lg">
+            <CalendarDays className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold">Holidays</h1>
+            <p className="text-gray-600 text-sm mt-1">
+              View your organization's holiday calendar
+            </p>
           </div>
         </div>
+      </div>
+      {/* Financial Year Selection Card */}
+      <Card className="mb-6">
+        <CardContent>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="flex-1 sm:flex-initial">
+              <Label
+                htmlFor="financialYear"
+                className="text-sm font-medium mb-2 block"
+              >
+                Financial Year
+              </Label>
+              <Input type="text" value={financialYear} disabled />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-        {loading ? (
-          <Card>
-            <CardContent className="py-6 text-center">
-              <div className="flex flex-col items-center gap-3">
-                <Spinner size={28} />
-                <p className="text-gray-600 text-sm">Loading holidays...</p>
+      {/* Error Message */}
+      {error && (
+        <Card className="mb-6 border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="h-5 w-5" />
+              <p className="text-sm font-medium">{error}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Holidays Content */}
+      {loading ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <div className="flex flex-col items-center gap-4">
+              <Spinner size={32} />
+              <div>
+                <p className="text-gray-700 font-medium">Loading holidays...</p>
+                <p className="text-gray-500 text-sm mt-1">
+                  Fetching holiday calendar for {financialYear}
+                </p>
               </div>
-            </CardContent>
-          </Card>
-        ) : holidays.length === 0 ? (
-          <Card>
-            <CardContent className="py-6 text-center text-gray-500 text-sm">
-              No holidays found for {year}.
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {holidays.map((holiday) => (
-              <Card key={holiday.id || holiday.holiday_id}>
-                <CardContent className="p-4">
-                  <div className="flex flex-col gap-3">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-base sm:text-lg mb-2 break-words">
-                        {holiday.name || holiday.holiday_name}
-                      </h3>
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                        <p className="text-sm text-gray-600">
-                          {formatDateDisplay(
-                            holiday.holiday_date || holiday.date
-                          )}
-                        </p>
-                        <div className="flex gap-2 flex-wrap">
-                          <Badge
-                            variant={
-                              holiday.is_optional === "Y" ||
-                              holiday.is_optional === 1
-                                ? "secondary"
-                                : "default"
-                            }
-                            className="text-xs"
-                          >
-                            {holiday.is_optional === "Y" ||
-                            holiday.is_optional === 1
-                              ? "Optional"
-                              : "Mandatory"}
+            </div>
+          </CardContent>
+        </Card>
+      ) : holidays.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <div className="flex flex-col items-center gap-3">
+              <CalendarDays className="h-12 w-12 text-gray-400" />
+              <div>
+                <p className="text-gray-700 font-medium">
+                  {hasCalendarError
+                    ? "Holiday Not Setup"
+                    : `No Holidays found for ${financialYear}`}
+                </p>
+                <p className="text-gray-500 text-sm mt-1">
+                  {hasCalendarError
+                    ? "Unable to resolve calendar for this year. Please contact your administrator."
+                    : "No holidays have been configured for this year. Please check back later or contact your administrator."}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-6">
+          {holidays.length > 0 && (
+            <div>
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-blue-500"></div>
+                Holidays ({holidays.length})
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {holidays.map((holiday) => (
+                  <Card
+                    key={holiday.id || holiday.holiday_id}
+                    className="hover:shadow-md transition-shadow border-l-4 border-l-blue-500"
+                  >
+                    <CardContent className="p-5">
+                      <div className="space-y-3">
+                        <div>
+                          <h3 className="font-semibold text-lg mb-2 break-words">
+                            {holiday.name || holiday.holiday_name}
+                          </h3>
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Calendar className="h-4 w-4" />
+                            <span className="font-medium">
+                              {formatDateDisplay(
+                                holiday.holiday_date || holiday.date
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="default" className="text-xs">
+                            Mandatory
                           </Badge>
                           {(holiday.is_override === "Y" ||
                             holiday.is_override === 1) && (
@@ -198,23 +179,22 @@ const HolidaysPage = () => {
                             </Badge>
                           )}
                         </div>
+                        {holiday.description && (
+                          <p className="text-sm text-gray-600 mt-2 break-words line-clamp-2">
+                            {holiday.description}
+                          </p>
+                        )}
                       </div>
-                      {holiday.description && (
-                        <p className="text-sm text-gray-600 mt-2 break-words">
-                          {holiday.description}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
 
 export default HolidaysPage;
-

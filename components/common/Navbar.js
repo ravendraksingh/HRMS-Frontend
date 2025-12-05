@@ -17,7 +17,7 @@ import { useAuth } from "@/components/common/AuthContext";
 const Navbar = () => {
   const { user } = useAuth();
   const { toggleSidebar } = useSidebar();
-
+  console.log("user in Navbar", user);
   async function handleLogout() {
     try {
       await internalApiClient.post("/api/auth/logout", {
@@ -27,6 +27,7 @@ const Navbar = () => {
     } catch (error) {
       console.error("Logout API error:", error);
     } finally {
+      // Clear tokens from sessionStorage
       await clientTokenStorage.clearTokens();
       if (typeof window !== "undefined") {
         window.location.href = "/login";
@@ -50,7 +51,7 @@ const Navbar = () => {
         <DropdownMenu>
           <DropdownMenuTrigger>
             <span className="text-xl font-bold border-1 border-gray-400 rounded-full p-2">
-              {getInitials(user?.name)}
+              {getInitials(user?.employee_name || user?.name)}
             </span>
           </DropdownMenuTrigger>
           <DropdownMenuContent sideOffset={10} align="start" className="w-56">

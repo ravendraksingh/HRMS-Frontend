@@ -39,27 +39,13 @@ const DepartmentsPage = () => {
   const [validationErrors, setValidationErrors] = useState({});
   const [hrManagers, setHrManagers] = useState({}); // { departmentId: [managers] }
   const [managers, setManagers] = useState([]); // All available managers
-  const [employees, setEmployees] = useState([]); // All employees for department_head selection
   const [expandedDept, setExpandedDept] = useState(null); // Track which department is expanded
   const [addingHrManager, setAddingHrManager] = useState({}); // { departmentId: true/false }
   const [selectedHrManager, setSelectedHrManager] = useState({}); // { departmentId: managerId }
 
   useEffect(() => {
     fetchDepartments();
-    fetchEmployees();
   }, []);
-
-  const fetchEmployees = async () => {
-    try {
-      const res = await externalApiClient.get("/employees");
-      setEmployees(res.data.employees);
-    } catch (error) {
-      console.error("Error fetching employees:", error);
-      // Don't show error toast for employees fetch failure - it's not critical
-      // The department head dropdown will just be empty
-      setEmployees([]);
-    }
-  };
 
   const fetchHrManagers = async (departmentId) => {
     try {
@@ -263,8 +249,7 @@ const DepartmentsPage = () => {
       await fetchDepartments();
     } catch (error) {
       console.error("Error adding department:", error);
-      const errorMsg =
-        getErrorMessage(error, "Failed to add department");
+      const errorMsg = getErrorMessage(error, "Failed to add department");
       setError(errorMsg);
       toast.error(errorMsg);
     }
@@ -480,37 +465,15 @@ const DepartmentsPage = () => {
                 <Label htmlFor="newDeptHead" className="mb-1">
                   Department Head
                 </Label>
-                <Select
-                  value={
-                    newDept.department_head
-                      ? String(newDept.department_head)
-                      : "none"
-                  }
-                  onValueChange={(value) =>
-                    setNewDept({
-                      ...newDept,
-                      department_head: value === "none" ? "" : value,
-                    })
-                  }
-                >
-                  <SelectTrigger id="newDeptHead" className="w-full">
-                    <SelectValue placeholder="Select department head" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {employees.length > 0 ? (
-                      employees.map((emp) => (
-                        <SelectItem key={emp.empid} value={String(emp.empid)}>
-                          {emp.name || emp.employee_name}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="__no_employees__" disabled>
-                        No employees available
-                      </SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                <Input
+                  type="text"
+                  name="department_head_empid"
+                  id="newDeptHeadEmpId"
+                  value={newDept.department_head_empid}
+                  onChange={handleNewDeptChange}
+                  placeholder="Enter dept. head employee id"
+                  maxLength={10}
+                />
               </div>
               <div className="flex gap-2 mt-4">
                 <Button
@@ -549,7 +512,7 @@ const DepartmentsPage = () => {
                             <div>
                               <Label
                                 htmlFor={`editDeptCode-${dept.deptid}`}
-                                className="mb-1"
+                                className="mb-3"
                               >
                                 Department ID *
                               </Label>
@@ -578,7 +541,7 @@ const DepartmentsPage = () => {
                             <div>
                               <Label
                                 htmlFor={`editDeptName-${dept.deptid}`}
-                                className="mb-1"
+                                className="mb-3"
                               >
                                 Name *
                               </Label>
@@ -604,7 +567,7 @@ const DepartmentsPage = () => {
                             <div>
                               <Label
                                 htmlFor={`editDeptShortName-${dept.deptid}`}
-                                className="mb-1"
+                                className="mb-3"
                               >
                                 Short Name
                               </Label>
@@ -626,51 +589,19 @@ const DepartmentsPage = () => {
                             <div>
                               <Label
                                 htmlFor={`editDeptHead-${dept.deptid}`}
-                                className="mb-1"
+                                className="mb-3"
                               >
                                 Department Head
                               </Label>
-                              <Select
-                                value={
-                                  draftDept.department_head
-                                    ? String(draftDept.department_head)
-                                    : "none"
-                                }
-                                onValueChange={(value) =>
-                                  setDraftDept({
-                                    ...draftDept,
-                                    department_head:
-                                      value === "none" ? "" : value,
-                                  })
-                                }
-                              >
-                                <SelectTrigger
-                                  id={`editDeptHead-${dept.deptid}`}
-                                  className="w-full"
-                                >
-                                  <SelectValue placeholder="Select department head" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="none">None</SelectItem>
-                                  {employees.length > 0 ? (
-                                    employees.map((emp) => (
-                                      <SelectItem
-                                        key={emp.empid}
-                                        value={String(emp.empid)}
-                                      >
-                                        {emp.name || emp.employee_name}
-                                      </SelectItem>
-                                    ))
-                                  ) : (
-                                    <SelectItem
-                                      value="__no_employees__"
-                                      disabled
-                                    >
-                                      No employees available
-                                    </SelectItem>
-                                  )}
-                                </SelectContent>
-                              </Select>
+                              <Input
+                                type="text"
+                                name="department_head_empid"
+                                id={`editDeptHeadEmpId-${dept.deptid}`}
+                                value={draftDept.department_head_empid}
+                                onChange={handleDraftChange}
+                                placeholder="Emp ID of head"
+                                maxLength={10}
+                              />
                             </div>
                           </div>
                           <div className="flex gap-2">
@@ -720,32 +651,9 @@ const DepartmentsPage = () => {
                                   Department Head
                                 </p>
                                 {dept.department_head_empid ? (
-                                  <div>
-                                    {(() => {
-                                      const headEmployee = employees.find(
-                                        (emp) =>
-                                          emp.empid ==
-                                          dept.department_head_empid
-                                      );
-                                      return headEmployee ? (
-                                        <>
-                                          <p className="font-semibold">
-                                            {headEmployee.name ||
-                                              headEmployee.employee_name ||
-                                              "N/A"}
-                                          </p>
-                                          <p className="text-xs text-gray-400">
-                                            ID: {headEmployee.empid || "N/A"}
-                                          </p>
-                                        </>
-                                      ) : (
-                                        <p className="text-gray-400 italic">
-                                          ID: {dept.department_head_empid}{" "}
-                                          (Loading...)
-                                        </p>
-                                      );
-                                    })()}
-                                  </div>
+                                  <p className="text-sm">
+                                    ID: {dept.department_head_empid}
+                                  </p>
                                 ) : (
                                   <p className="text-gray-400 italic">
                                     Not assigned

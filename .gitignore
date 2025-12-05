@@ -2,6 +2,12 @@
 
 # custom folders which are not to pushed to git
 /postman
+/output
+/docs/LICENSING_GUIDE.md
+/docs/LICENSING_SUMMARY.md
+/scripts/generate-licenses.js
+/LICENSE
+/THIRD_PARTY_LICENSES.md
 
 # dependencies
 /node_modules

@@ -210,12 +210,29 @@ const DataTable = ({ columns, data }) => {
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
                   <TableHead key={header.id} className="font-bold">
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
+                    {header.isPlaceholder ? null : //   flexRender(
+                    //       header.column.columnDef.header,
+                    //       header.getContext()
+                    //     )}
+                    header.column.columnDef.enableSorting ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => header.column.toggleSorting()}
+                        className="font-semibold"
+                      >
+                        {flexRender(
                           header.column.columnDef.header,
                           header.getContext()
                         )}
+                        <ArrowUpDown />
+                      </Button>
+                    ) : (
+                      flexRender(
+                        header.column.columnDef.header,
+                        header.getContext()
+                      )
+                    )}
                   </TableHead>
                 ))}
               </TableRow>

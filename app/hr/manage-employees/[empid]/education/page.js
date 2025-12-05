@@ -100,6 +100,7 @@ const ManageEmployeeEducationPage = () => {
       employeeId={empid}
       education={education}
       onUpdate={fetchEducation}
+      isHRView={true}
     />
   );
 };

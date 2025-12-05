@@ -20,7 +20,7 @@ import {
   TrendingUp,
   MapPin,
 } from "lucide-react";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
 import JobHistoryTab from "./components/JobHistoryTab";
 
 const JobProfilePage = () => {

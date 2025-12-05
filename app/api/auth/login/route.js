@@ -1,11 +1,20 @@
 import { NextResponse } from "next/server";
 import { getBackendUrl } from "@/lib/getBackendUrl";
-import { serverTokenStorage } from "@/lib/tokenStorage";
 import axios from "axios";
 
 export async function POST(req) {
   try {
-    const { username, password } = await req.json();
+    // Handle FormData from native form submission
+    const formData = await req.formData();
+    const username = formData.get("username");
+    const password = formData.get("password");
+
+    if (!username || !password) {
+      return NextResponse.redirect(
+        new URL("/login?error=" + encodeURIComponent("Username and password are required"), req.url)
+      );
+    }
+
     const backendBaseUrl = getBackendUrl();
 
     const loginRes = await axios.post(`${backendBaseUrl}/auth/login`, {
@@ -17,47 +26,19 @@ export async function POST(req) {
     const accessToken = data.access_token || data.accessToken || data.token;
     const refreshToken = data.refresh_token || data.refreshToken;
 
-    // Determine storage type from environment variable
-    const storageType = (
-      process.env.NEXT_PUBLIC_TOKEN_STORAGE_TYPE || "localStorage"
-    ).toLowerCase();
-
-    // Prepare response with user data
-    const response = NextResponse.json(
-      {
-        user: data.user,
-      },
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
-
-    // If using cookie storage, set httpOnly cookies
-    if (storageType === "cookie") {
-      if (accessToken) {
-        await serverTokenStorage.setAccessToken(accessToken, response);
-      }
-      if (refreshToken) {
-        await serverTokenStorage.setRefreshToken(refreshToken, response);
-      }
-    } else {
-      // For localStorage/sessionStorage, include tokens in response body
-      const responseData = { user: data.user };
-      if (accessToken) {
-        responseData.accessToken = accessToken;
-      }
-      if (refreshToken) {
-        responseData.refreshToken = refreshToken;
-      }
-      return NextResponse.json(responseData, {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+    // Redirect to success page with tokens in URL (will be stored in sessionStorage)
+    const redirectUrl = new URL("/login/success", req.url);
+    if (accessToken) {
+      redirectUrl.searchParams.set("accessToken", accessToken);
+    }
+    if (refreshToken) {
+      redirectUrl.searchParams.set("refreshToken", refreshToken);
     }
 
-    return response;
+    return NextResponse.redirect(redirectUrl);
   } catch (error) {
-    return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    return NextResponse.redirect(
+      new URL("/login?error=" + encodeURIComponent("Invalid credentials"), req.url)
+    );
   }
 }

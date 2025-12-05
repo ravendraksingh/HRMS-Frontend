@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,79 +31,75 @@ import {
   Building,
   MapPin,
   User,
-  Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 import { Spinner } from "@/components/ui/shadcn-io/spinner";
+import SelectDepartment from "@/components/common/SelectDepartment";
+import SelectLocation from "@/components/common/SelectLocation";
 
 const SearchEmployeesPage = () => {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(false);
   const [viewType, setViewType] = useState("list"); // 'list' or 'grid'
-  const [searchCriteria, setSearchCriteria] = useState({
-    type: "name", // 'empid', 'name', 'department', 'location'
-    value: "",
-  });
-  const [alphabetFilter, setAlphabetFilter] = useState(null); // A-Z or null
-  const [departments, setDepartments] = useState([]);
-  const [locations, setLocations] = useState([]);
-
-  // Fetch departments and locations for dropdowns
-  useEffect(() => {
-    fetchDepartments();
-    fetchLocations();
-  }, []);
-
-  const fetchDepartments = async () => {
-    try {
-      const res = await externalApiClient.get("/departments");
-      const deptData = res.data?.departments || res.data || [];
-      setDepartments(Array.isArray(deptData) ? deptData : []);
-    } catch (error) {
-      console.error("Error fetching departments:", error);
-    }
-  };
-
-  const fetchLocations = async () => {
-    try {
-      const res = await externalApiClient.get("/locations");
-      const locData = res.data?.locations || res.data || [];
-      setLocations(Array.isArray(locData) ? locData : []);
-    } catch (error) {
-      console.error("Error fetching locations:", error);
-    }
-  };
+  
+  // Search criteria
+  const [departmentId, setDepartmentId] = useState("");
+  const [locationId, setLocationId] = useState("");
+  const [name, setName] = useState("");
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalEmployees, setTotalEmployees] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  
+  // Track if user has performed a search
+  const hasSearchedRef = useRef(false);
 
   // Fetch employees with search criteria
   const fetchEmployees = useCallback(async () => {
+    // Validate that at least one search criteria is provided
+    if (!departmentId && !locationId && (!name || !name.trim())) {
+      toast.error("Please provide at least one search criteria");
+      return;
+    }
+
     try {
       setLoading(true);
 
       // Build query parameters
       const params = new URLSearchParams();
 
-      // Add search criteria
-      if (searchCriteria.value && searchCriteria.value.trim()) {
-        params.append("search_type", searchCriteria.type);
-        params.append("search_value", searchCriteria.value.trim());
+      // Add search criteria - support multiple criteria simultaneously
+      // Send all provided criteria as separate parameters for the backend to filter
+      if (departmentId) {
+        params.append("department_id", departmentId);
+      }
+      if (locationId) {
+        params.append("location_id", locationId);
+      }
+      if (name && name.trim()) {
+        params.append("search_type", "name");
+        params.append("search_value", name.trim());
+        params.append("fuzzy", "true");
       }
 
-      // Add alphabet filter (for name search)
-      if (alphabetFilter) {
-        params.append("name_starts_with", alphabetFilter);
-      }
+      // Add pagination parameters
+      params.append("page", currentPage.toString());
+      params.append("limit", pageSize.toString());
 
-      // Add fuzzy search flag
-      params.append("fuzzy", "true");
-
-      const queryString = params.toString();
-      const url = queryString
-        ? `/employees/search?${queryString}`
-        : `/employees/search`;
-
+      const url = `/employees/search?${params.toString()}`;
       const res = await externalApiClient.get(url);
+      
       const employeesData = res.data?.employees || res.data || [];
       setEmployees(Array.isArray(employeesData) ? employeesData : []);
+      
+      // Handle pagination metadata
+      const total = res.data?.total || employeesData.length;
+      setTotalEmployees(total);
+      setTotalPages(Math.ceil(total / pageSize));
     } catch (error) {
       console.error("Error fetching employees:", error);
       const errorMessage =
@@ -112,52 +108,48 @@ const SearchEmployeesPage = () => {
         "Failed to fetch employees";
       toast.error(errorMessage);
       setEmployees([]);
+      setTotalEmployees(0);
+      setTotalPages(0);
     } finally {
       setLoading(false);
     }
-  }, [searchCriteria, alphabetFilter]);
+  }, [departmentId, locationId, name, currentPage, pageSize]);
 
-  // Debounce search input and fetch employees
+  const handleSearch = () => {
+    setCurrentPage(1); // Reset to first page on new search
+    hasSearchedRef.current = true;
+    fetchEmployees();
+  };
+
+  const handleClear = () => {
+    setDepartmentId("");
+    setLocationId("");
+    setName("");
+    setEmployees([]);
+    setCurrentPage(1);
+    setTotalEmployees(0);
+    setTotalPages(0);
+    hasSearchedRef.current = false;
+  };
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
+
+  const handlePageSizeChange = (newSize) => {
+    setPageSize(Number(newSize));
+    setCurrentPage(1); // Reset to first page when changing page size
+  };
+
+  // Fetch employees when page or pageSize changes (only after initial search)
   useEffect(() => {
-    // Only debounce if user is typing (not for alphabet filter or dropdown changes)
-    if (searchCriteria.type === "empid" || searchCriteria.type === "name") {
-      const timer = setTimeout(() => {
-        fetchEmployees();
-      }, 500); // 500ms debounce
-
-      return () => clearTimeout(timer);
-    } else {
-      // For department/location, fetch immediately
+    if (hasSearchedRef.current) {
       fetchEmployees();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchCriteria, alphabetFilter]);
-
-  const handleSearchTypeChange = (type) => {
-    setSearchCriteria({ ...searchCriteria, type, value: "" });
-    setAlphabetFilter(null); // Clear alphabet filter when changing search type
-  };
-
-  const handleSearchValueChange = (value) => {
-    setSearchCriteria({ ...searchCriteria, value });
-    setAlphabetFilter(null); // Clear alphabet filter when typing
-  };
-
-  const handleAlphabetClick = (letter) => {
-    if (alphabetFilter === letter) {
-      // If clicking the same letter, clear the filter
-      setAlphabetFilter(null);
-      setSearchCriteria({ ...searchCriteria, value: "" });
-    } else {
-      setAlphabetFilter(letter);
-      setSearchCriteria({ ...searchCriteria, type: "name", value: "" });
-    }
-  };
-
-  const handleClearSearch = () => {
-    setSearchCriteria({ type: "name", value: "" });
-    setAlphabetFilter(null);
-  };
+  }, [currentPage, pageSize]);
 
   const getEmployeeName = (employee) => {
     return (
@@ -168,33 +160,28 @@ const SearchEmployeesPage = () => {
     );
   };
 
-  const getDepartmentName = (deptId) => {
-    if (!deptId) return "N/A";
-    const dept = departments.find(
-      (d) => d.id === deptId || d.department_id === deptId
-    );
-    return dept?.name || dept?.department_name || deptId;
+  // Get paginated employees for display (client-side pagination fallback)
+  const getPaginatedEmployees = () => {
+    if (totalPages > 0) {
+      // Server-side pagination is working
+      return employees;
+    }
+    // Fallback to client-side pagination if server doesn't support it
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    return employees.slice(startIndex, endIndex);
   };
 
-  const getLocationName = (locId) => {
-    if (!locId) return "N/A";
-    const loc = locations.find(
-      (l) => l.id === locId || l.location_id === locId
-    );
-    return loc?.name || loc?.location_name || locId;
-  };
-
-  // Generate alphabet array A-Z
-  const alphabet = Array.from({ length: 26 }, (_, i) =>
-    String.fromCharCode(65 + i)
-  );
+  const displayEmployees = totalPages > 0 ? employees : getPaginatedEmployees();
+  const effectiveTotalPages = totalPages > 0 ? totalPages : Math.ceil(employees.length / pageSize);
+  const effectiveTotal = totalEmployees > 0 ? totalEmployees : employees.length;
 
   return (
     <div className="container mx-auto max-w-7xl p-6">
       <div className="mb-6">
         <h1 className="text-3xl font-bold mb-2">Search Employees</h1>
         <p className="text-gray-600">
-          Search and filter employees by various criteria
+          Search and filter employees by department, location, and name
         </p>
       </div>
 
@@ -205,348 +192,339 @@ const SearchEmployeesPage = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {/* Search Type and Value */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="md:col-span-1">
-                <Label className="mb-3">Search By</Label>
-                <Select
-                  value={searchCriteria.type}
-                  onValueChange={handleSearchTypeChange}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="empid">
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4" />
-                        Employee ID
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="name">
-                      <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4" />
-                        Name
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="department">
-                      <div className="flex items-center gap-2">
-                        <Building className="h-4 w-4" />
-                        Department
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="location">
-                      <div className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4" />
-                        Location
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Department Filter */}
+              <div>
+                <SelectDepartment
+                  value={departmentId}
+                  onValueChange={setDepartmentId}
+                  placeholder="Select department"
+                  label="Department"
+                  showLabel={true}
+                  allowNone={true}
+                  showShortName={true}
+                />
               </div>
 
-              <div className="md:col-span-2">
-                <Label className="mb-3">Search Value</Label>
-                {searchCriteria.type === "department" ? (
-                  <Select
-                    value={searchCriteria.value}
-                    onValueChange={(value) => handleSearchValueChange(value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">All Departments</SelectItem>
-                      {departments.map((dept) => (
-                        <SelectItem
-                          key={dept.id || dept.department_id}
-                          value={dept.id || dept.department_id}
-                        >
-                          {dept.name || dept.department_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : searchCriteria.type === "location" ? (
-                  <Select
-                    value={searchCriteria.value}
-                    onValueChange={(value) => handleSearchValueChange(value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select location" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">All Locations</SelectItem>
-                      {locations.map((loc) => (
-                        <SelectItem
-                          key={loc.id || loc.location_id}
-                          value={loc.id || loc.location_id}
-                        >
-                          {loc.name || loc.location_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      placeholder={
-                        searchCriteria.type === "empid"
-                          ? "Enter Employee ID..."
-                          : "Enter name..."
+              {/* Location Filter */}
+              <div>
+                <SelectLocation
+                  value={locationId}
+                  onValueChange={setLocationId}
+                  placeholder="Select location"
+                  label="Location"
+                  showLabel={true}
+                  allowNone={true}
+                  showShortName={true}
+                />
+              </div>
+
+              {/* Name Filter */}
+              <div>
+                <Label htmlFor="name-search" className="mb-3">
+                  Name
+                </Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="name-search"
+                    placeholder="Enter employee name..."
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="pl-10"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        handleSearch();
                       }
-                      value={searchCriteria.value}
-                      onChange={(e) => handleSearchValueChange(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="md:col-span-1 flex items-end">
-                <Button
-                  variant="outline"
-                  onClick={handleClearSearch}
-                  className="w-full"
-                >
-                  Clear
-                </Button>
+                    }}
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Alphabet Filter (only for name search) */}
-            {searchCriteria.type === "name" && (
-              <div>
-                <Label className="mb-2 block">Filter by First Letter</Label>
-                <div className="flex flex-wrap gap-2">
-                  {alphabet.map((letter) => (
-                    <Button
-                      key={letter}
-                      variant={
-                        alphabetFilter === letter ? "default" : "outline"
-                      }
-                      size="sm"
-                      onClick={() => handleAlphabetClick(letter)}
-                      className={
-                        alphabetFilter === letter
-                          ? "bg-primary text-primary-foreground"
-                          : ""
-                      }
-                    >
-                      {letter}
-                    </Button>
-                  ))}
-                  {alphabetFilter && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setAlphabetFilter(null);
-                        setSearchCriteria({ ...searchCriteria, value: "" });
-                      }}
-                    >
-                      Clear
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={handleSearch}
+                className="flex items-center gap-2"
+                disabled={loading}
+              >
+                <Search className="h-4 w-4" />
+                Search
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleClear}
+                disabled={loading}
+              >
+                Clear
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
 
       {/* View Toggle and Results Header */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>
-              Results ({employees.length} employee
-              {employees.length !== 1 ? "s" : ""})
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={viewType === "list" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewType("list")}
-              >
-                <List className="h-4 w-4 mr-2" />
-                List
-              </Button>
-              <Button
-                variant={viewType === "grid" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewType("grid")}
-              >
-                <Grid className="h-4 w-4 mr-2" />
-                Grid
-              </Button>
+      {employees.length > 0 && (
+        <Card className="mb-6">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>
+                Results ({effectiveTotal} employee
+                {effectiveTotal !== 1 ? "s" : ""})
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={viewType === "list" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewType("list")}
+                >
+                  <List className="h-4 w-4 mr-2" />
+                  List
+                </Button>
+                <Button
+                  variant={viewType === "grid" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewType("grid")}
+                >
+                  <Grid className="h-4 w-4 mr-2" />
+                  Grid
+                </Button>
+              </div>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Spinner size={32} />
-            </div>
-          ) : employees.length > 0 ? (
-            viewType === "list" ? (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Employee ID</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Department</TableHead>
-                      <TableHead>Location</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {employees.map((employee) => (
-                      <TableRow key={employee.empid || employee.employee_id}>
-                        <TableCell className="font-medium">
-                          {employee.empid || employee.employee_id}
-                        </TableCell>
-                        <TableCell>{getEmployeeName(employee)}</TableCell>
-                        <TableCell>
-                          {getDepartmentName(
-                            employee.department_id || employee.department
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {getLocationName(
-                            employee.location_id || employee.location
-                          )}
-                        </TableCell>
-                        <TableCell>{employee.email || "N/A"}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              employee.is_active === "Y" ||
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Spinner size={32} />
+              </div>
+            ) : displayEmployees.length > 0 ? (
+              <>
+                {viewType === "list" ? (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Employee ID</TableHead>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Department</TableHead>
+                          <TableHead>Location</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {displayEmployees.map((employee) => (
+                          <TableRow key={employee.empid || employee.employee_id}>
+                            <TableCell className="font-medium">
+                              {employee.empid || employee.employee_id}
+                            </TableCell>
+                            <TableCell>{getEmployeeName(employee)}</TableCell>
+                            <TableCell>
+                              {employee.department_name ||
+                                employee.department ||
+                                "N/A"}
+                            </TableCell>
+                            <TableCell>
+                              {employee.location_name ||
+                                employee.location ||
+                                "N/A"}
+                            </TableCell>
+                            <TableCell>{employee.email || "N/A"}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  employee.is_active === "Y" ||
+                                  employee.is_active === true ||
+                                  employee.status === "active"
+                                    ? "default"
+                                    : "secondary"
+                                }
+                              >
+                                {employee.is_active === "Y" ||
+                                employee.is_active === true ||
+                                employee.status === "active"
+                                  ? "Active"
+                                  : "Inactive"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {employee.empid && (
+                                <Button asChild variant="outline" size="sm">
+                                  <Link
+                                    href={`/hr/manage-employees/${employee.empid}`}
+                                  >
+                                    View Details
+                                  </Link>
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {displayEmployees.map((employee) => (
+                      <Card
+                        key={employee.empid || employee.employee_id}
+                        className="hover:shadow-lg transition-shadow"
+                      >
+                        <CardHeader>
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <CardTitle className="text-lg">
+                                {getEmployeeName(employee)}
+                              </CardTitle>
+                              <p className="text-sm text-gray-500 mt-1">
+                                ID: {employee.empid || employee.employee_id}
+                              </p>
+                            </div>
+                            <Badge
+                              variant={
+                                employee.is_active === "Y" ||
+                                employee.is_active === true ||
+                                employee.status === "active"
+                                  ? "default"
+                                  : "secondary"
+                              }
+                            >
+                              {employee.is_active === "Y" ||
                               employee.is_active === true ||
                               employee.status === "active"
-                                ? "default"
-                                : "secondary"
-                            }
-                          >
-                            {employee.is_active === "Y" ||
-                            employee.is_active === true ||
-                            employee.status === "active"
-                              ? "Active"
-                              : "Inactive"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {employee.empid && (
-                            <Button asChild variant="outline" size="sm">
-                              <Link
-                                href={`/hr/manage-employees/${employee.empid}`}
-                              >
-                                View Details
-                              </Link>
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
+                                ? "Active"
+                                : "Inactive"}
+                            </Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-sm">
+                              <Building className="h-4 w-4 text-gray-400" />
+                              <span>
+                                {employee.department_name ||
+                                  employee.department ||
+                                  "N/A"}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <MapPin className="h-4 w-4 text-gray-400" />
+                              <span>
+                                {employee.location_name ||
+                                  employee.location ||
+                                  "N/A"}
+                              </span>
+                            </div>
+                            {employee.email && (
+                              <div className="flex items-center gap-2 text-sm">
+                                <User className="h-4 w-4 text-gray-400" />
+                                <span className="truncate">{employee.email}</span>
+                              </div>
+                            )}
+                            {employee.empid && (
+                              <div className="pt-2">
+                                <Button
+                                  asChild
+                                  variant="outline"
+                                  className="w-full"
+                                  size="sm"
+                                >
+                                  <Link
+                                    href={`/hr/manage-employees/${employee.empid}`}
+                                  >
+                                    View Details
+                                  </Link>
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
                     ))}
-                  </TableBody>
-                </Table>
-              </div>
+                  </div>
+                )}
+
+                {/* Pagination Controls */}
+                {effectiveTotalPages > 1 && (
+                  <div className="mt-6 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="page-size" className="text-sm">
+                        Records per page:
+                      </Label>
+                      <Select
+                        value={pageSize.toString()}
+                        onValueChange={(value) => {
+                          handlePageSizeChange(value);
+                        }}
+                      >
+                        <SelectTrigger id="page-size" className="w-20">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="10">10</SelectItem>
+                          <SelectItem value="25">25</SelectItem>
+                          <SelectItem value="50">50</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          handlePageChange(currentPage - 1);
+                        }}
+                        disabled={currentPage === 1 || loading}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        Previous
+                      </Button>
+                      <span className="text-sm text-gray-600">
+                        Page {currentPage} of {effectiveTotalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          handlePageChange(currentPage + 1);
+                        }}
+                        disabled={currentPage === effectiveTotalPages || loading}
+                      >
+                        Next
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {employees.map((employee) => (
-                  <Card
-                    key={employee.empid || employee.employee_id}
-                    className="hover:shadow-lg transition-shadow"
-                  >
-                    <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <CardTitle className="text-lg">
-                            {getEmployeeName(employee)}
-                          </CardTitle>
-                          <p className="text-sm text-gray-500 mt-1">
-                            ID: {employee.empid || employee.employee_id}
-                          </p>
-                        </div>
-                        <Badge
-                          variant={
-                            employee.is_active === "Y" ||
-                            employee.is_active === true ||
-                            employee.status === "active"
-                              ? "default"
-                              : "secondary"
-                          }
-                        >
-                          {employee.is_active === "Y" ||
-                          employee.is_active === true ||
-                          employee.status === "active"
-                            ? "Active"
-                            : "Inactive"}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-sm">
-                          <Building className="h-4 w-4 text-gray-400" />
-                          <span>
-                            {getDepartmentName(
-                              employee.department_id || employee.department
-                            )}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <MapPin className="h-4 w-4 text-gray-400" />
-                          <span>
-                            {getLocationName(
-                              employee.location_id || employee.location
-                            )}
-                          </span>
-                        </div>
-                        {employee.email && (
-                          <div className="flex items-center gap-2 text-sm">
-                            <User className="h-4 w-4 text-gray-400" />
-                            <span className="truncate">{employee.email}</span>
-                          </div>
-                        )}
-                        {employee.empid && (
-                          <div className="pt-2">
-                            <Button
-                              asChild
-                              variant="outline"
-                              className="w-full"
-                              size="sm"
-                            >
-                              <Link
-                                href={`/hr/manage-employees/${employee.empid}`}
-                              >
-                                View Details
-                              </Link>
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+              <div className="text-center py-12">
+                <Users className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                <p className="text-gray-600">No employees found on this page</p>
               </div>
-            )
-          ) : (
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Empty State */}
+      {employees.length === 0 && !loading && (
+        <Card>
+          <CardContent>
             <div className="text-center py-12">
               <Users className="mx-auto h-12 w-12 text-gray-400 mb-4" />
               <p className="text-gray-600">
-                {searchCriteria.value || alphabetFilter
+                {departmentId || locationId || (name && name.trim())
                   ? "No employees found matching your search criteria"
-                  : "Start searching to find employees"}
+                  : "Please provide at least one search criteria and click Search"}
               </p>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

@@ -132,13 +132,8 @@ const EmployeesPage = () => {
       fetchDepartments();
       fetchLocations();
     }
-  }, [
-    user?.empid,
-    user?.username,
-    fetchEmployees,
-    fetchDepartments,
-    fetchLocations,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.empid, user?.username]);
 
   const handleChildUpdate = async () => {
     await fetchEmployees();

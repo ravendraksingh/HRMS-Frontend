@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { externalApiClient } from "@/app/services/externalApiClient";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
-import { UsersRound } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { UsersRound, RefreshCw } from "lucide-react";
 import TeamOverview from "@/components/managers/TeamOverview";
 import { Spinner } from "@/components/ui/shadcn-io/spinner";
 import { useAuth } from "@/components/common/AuthContext";
@@ -13,7 +14,9 @@ export default function TeamOverviewPage() {
   const { user } = useAuth();
   const [teamMembers, setTeamMembers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [isManager, setIsManager] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (user?.empid) {
@@ -68,6 +71,17 @@ export default function TeamOverviewPage() {
     );
   }
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetchTeamMembers();
+      // Force TeamOverview to refresh by updating refreshKey
+      setRefreshKey((prev) => prev + 1);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   if (!isManager) {
     return (
       <Card>
@@ -84,5 +98,39 @@ export default function TeamOverviewPage() {
     );
   }
 
-  return <TeamOverview teamMembers={teamMembers} managerId={user?.empid} />;
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Team Overview</h1>
+          <p className="text-gray-600">
+            Welcome back, {user?.employee_name || "Manager"}!
+          </p>
+        </div>
+        <Button
+          onClick={handleRefresh}
+          disabled={refreshing || loading}
+          variant="outline"
+          size="sm"
+        >
+          {refreshing ? (
+            <>
+              <Spinner size={16} className="mr-2" />
+              Refreshing...
+            </>
+          ) : (
+            <>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh
+            </>
+          )}
+        </Button>
+      </div>
+      <TeamOverview
+        teamMembers={teamMembers}
+        managerEmpId={user?.empid}
+        refreshTrigger={refreshKey}
+      />
+    </div>
+  );
 }

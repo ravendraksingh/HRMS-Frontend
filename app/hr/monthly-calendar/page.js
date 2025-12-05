@@ -18,9 +18,10 @@ import { externalApiClient } from "@/app/services/externalApiClient";
 import { useAuth } from "@/components/common/AuthContext";
 import OrganizationInfoCard from "@/components/common/OrganizationInfoCard";
 import SelectDepartment from "@/components/common/SelectDepartment";
+import SelectMonth from "@/components/common/SelectMonth";
 import { Calendar, RefreshCw } from "lucide-react";
 import { Spinner } from "@/components/ui/shadcn-io/spinner";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
 import {
   Dialog,
   DialogContent,
@@ -45,12 +46,15 @@ const MonthlyCalendarPage = () => {
     departmentId: "",
   });
 
-  // Date state
+  // Date state - using YYYY-MM format for month selection
   const currentDate = new Date();
-  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(
-    currentDate.getMonth() + 1
-  );
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth() + 1;
+  const currentMonthStr = `${currentYear}-${String(currentMonth).padStart(
+    2,
+    "0"
+  )}`;
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
 
   useEffect(() => {
     fetchDepartments();
@@ -67,13 +71,7 @@ const MonthlyCalendarPage = () => {
       fetchCalendar();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    filters.scope,
-    filters.locationId,
-    filters.departmentId,
-    selectedYear,
-    selectedMonth,
-  ]);
+  }, [filters.scope, filters.locationId, filters.departmentId, selectedMonth]);
 
   const fetchDepartments = async () => {
     try {
@@ -106,17 +104,16 @@ const MonthlyCalendarPage = () => {
 
     try {
       setLoading(true);
-
       // Build URL based on scope - using direct monthly calendar endpoints from API
       let url = "";
 
       if (filters.scope === "organization") {
         // Organization calendar doesn't require organizationId in path
-        url = `/calendars/monthly/organization?year=${selectedYear}&month=${selectedMonth}`;
+        url = `/calendars/monthly/organization?month=${selectedMonth}`;
       } else if (filters.scope === "location") {
-        url = `/calendars/monthly/location/${filters.locationId}?year=${selectedYear}&month=${selectedMonth}`;
+        url = `/calendars/monthly/location/${filters.locationId}?month=${selectedMonth}`;
       } else if (filters.scope === "department") {
-        url = `/calendars/monthly/department/${filters.departmentId}?year=${selectedYear}&month=${selectedMonth}`;
+        url = `/calendars/monthly/department/${filters.departmentId}?month=${selectedMonth}`;
       } else {
         return;
       }
@@ -148,7 +145,6 @@ const MonthlyCalendarPage = () => {
     }));
   };
 
-
   const getDayTypeColor = (day) => {
     if (!day.is_working_day) {
       if (day.type === "HOLIDAY") {
@@ -168,21 +164,6 @@ const MonthlyCalendarPage = () => {
     }
     return <Badge variant="default">Working</Badge>;
   };
-
-  const monthNames = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-  ];
 
   // Group calendar days by week (starting from Monday)
   const groupDaysByWeek = (days) => {
@@ -235,58 +216,23 @@ const MonthlyCalendarPage = () => {
         </p>
       </div>
 
-      <OrganizationInfoCard />
-
       {/* Combined Filters, Month Navigation, and Summary */}
       <Card className="mb-4">
         <CardContent className="py-3 sm:py-4">
-          {/* First Row: Month and Year Dropdowns - Mobile First */}
+          {/* First Row: Month Dropdown - Mobile First */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-4 pb-3 border-b">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
               <div className="flex items-center gap-2">
                 <Label className="text-xs sm:text-sm whitespace-nowrap flex-shrink-0">
                   Month:
                 </Label>
-                <Select
-                  value={String(selectedMonth)}
-                  onValueChange={(value) => setSelectedMonth(parseInt(value))}
+                <SelectMonth
+                  value={selectedMonth}
+                  onValueChange={setSelectedMonth}
                   disabled={loading}
-                >
-                  <SelectTrigger className="h-9 sm:h-8 flex-1 sm:w-[140px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {monthNames.map((month, index) => (
-                      <SelectItem key={index + 1} value={String(index + 1)}>
-                        {month}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center gap-2">
-                <Label className="text-xs sm:text-sm whitespace-nowrap flex-shrink-0">
-                  Year:
-                </Label>
-                <Select
-                  value={String(selectedYear)}
-                  onValueChange={(value) => setSelectedYear(parseInt(value))}
-                  disabled={loading}
-                >
-                  <SelectTrigger className="h-9 sm:h-8 flex-1 sm:w-[100px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 11 }, (_, i) => {
-                      const year = currentDate.getFullYear() - 5 + i;
-                      return (
-                        <SelectItem key={year} value={String(year)}>
-                          {year}
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
+                  className="flex-1 sm:w-auto"
+                  showLabel={false}
+                />
               </div>
               {calendarData?.calendar_name && (
                 <p className="text-xs text-gray-600 truncate hidden sm:block ml-2">
@@ -505,7 +451,9 @@ const MonthlyCalendarPage = () => {
                                 </div>
                                 {/* Hide text content on mobile, show on larger screens */}
                                 <div className="hidden sm:block text-xs mt-2">
-                                  <p className="font-medium truncate">{day.reason}</p>
+                                  <p className="font-medium truncate">
+                                    {day.reason}
+                                  </p>
                                   {day.holiday && (
                                     <p className="mt-1 text-red-700 truncate">
                                       {day.holiday.holiday_name}

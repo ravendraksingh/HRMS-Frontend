@@ -14,7 +14,7 @@ import {
 import { externalApiClient } from "@/app/services/externalApiClient";
 import { toast } from "sonner";
 import { Clock, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
 import { Spinner } from "@/components/ui/shadcn-io/spinner";
 
 export default function CorrectionRequests({ employeeId }) {

@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -13,18 +12,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  UsersRound,
-  Mail,
-  Phone,
-  Building,
-  MapPin,
-  Search,
-  UserCircle,
-} from "lucide-react";
+import { UsersRound, Building, MapPin, Search } from "lucide-react";
 import { externalApiClient } from "@/app/services/externalApiClient";
-import { toast } from "sonner";
+import EmployeesTable from "@/components/data-table/EmployeesTable";
 
 export default function TeamDirectory({ teamMembers }) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -32,7 +22,7 @@ export default function TeamDirectory({ teamMembers }) {
   const [departments, setDepartments] = useState([]);
   const [locations, setLocations] = useState([]);
 
-  console.log("team members in TeamDirectory", teamMembers);
+//   console.log("team members in TeamDirectory", teamMembers);
 
   useEffect(() => {
     if (teamMembers) {
@@ -120,12 +110,8 @@ export default function TeamDirectory({ teamMembers }) {
       {/* Team Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Team Members
-            </CardTitle>
-          </CardHeader>
           <CardContent>
+            <p className="text-sm font-medium text-muted-foreground mb-2">Team Members</p>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold">{teamMembers?.length || 0}</p>
@@ -138,12 +124,8 @@ export default function TeamDirectory({ teamMembers }) {
         </Card>
 
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Departments{" "}
-            </CardTitle>
-          </CardHeader>
           <CardContent>
+            <p className="text-sm font-medium text-muted-foreground mb-2">Departments</p>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold">
@@ -164,12 +146,8 @@ export default function TeamDirectory({ teamMembers }) {
         </Card>
 
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Locations
-            </CardTitle>
-          </CardHeader>
           <CardContent>
+            <p className="text-sm font-medium text-muted-foreground mb-2">Locations</p>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold">
@@ -190,133 +168,19 @@ export default function TeamDirectory({ teamMembers }) {
         </Card>
       </div>
 
-      {/* Search */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Team Directory</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Search by name, email, employee code, or department..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Team Members List */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Team Members</CardTitle>
-            <Badge variant="secondary">
-              {filteredMembers.length} member(s)
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {filteredMembers.length > 0 ? (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Employee</TableHead>
-                    <TableHead>Employee Code</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Phone</TableHead>
-                    <TableHead>Department</TableHead>
-                    <TableHead>Location</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredMembers.map((member, index) => {
-                    const name =
-                      member.employee_name || member.name || "Unknown";
-                    const email = member.email || member.employee_email || "-";
-                    const phone = member.phone || member.phone_number || "-";
-                    const code = member.empid || "-";
-
-                    return (
-                      <TableRow key={member.employee_id || member.id || index}>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <Avatar>
-                              <AvatarFallback>
-                                {getInitials(name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="font-medium">{name}</p>
-                              {member.designation && (
-                                <p className="text-sm text-muted-foreground">
-                                  {member.designation}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{code}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Mail className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">{email}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {phone !== "-" ? (
-                            <div className="flex items-center gap-2">
-                              <Phone className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-sm">{phone}</span>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Building className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">
-                              {getDepartmentName(
-                                member.department_id || member.department
-                              )}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">
-                              {getLocationName(
-                                member.location_id || member.location
-                              )}
-                            </span>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              <UsersRound className="mx-auto h-12 w-12 mb-4 opacity-50" />
-              <p>
-                {searchQuery
-                  ? "No team members found matching your search."
-                  : "No team members found."}
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {filteredMembers.length > 0 ? (
+        <EmployeesTable data={filteredMembers} />
+      ) : (
+        <div className="text-center py-8 text-muted-foreground">
+          <UsersRound className="mx-auto h-12 w-12 mb-4 opacity-50" />
+          <p>
+            {searchQuery
+              ? "No team members found matching your search."
+              : "No team members found."}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

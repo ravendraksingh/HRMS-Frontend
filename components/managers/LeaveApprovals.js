@@ -40,9 +40,10 @@ import {
   RefreshCw,
   Filter,
 } from "lucide-react";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
 import { Spinner } from "@/components/ui/shadcn-io/spinner";
 import { useAuth } from "@/components/common/AuthContext";
+import SelectLeaveType from "@/components/common/SelectLeaveType";
 
 export default function LeaveApprovals({ teamMembers, managerId }) {
   const { user } = useAuth();
@@ -79,7 +80,7 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
 
       // Use manager-specific endpoint for pending leaves, or general endpoint with manager_id for others
       if (filters.status === "pending") {
-        url = `/managers/${managerId}/leaves/pending`;
+        url = `/managers/${managerId}/employees/leaves?status=pending`;
         // Add leave type filter if needed
         if (filters.leaveType !== "all") {
           params.append("leave_type", filters.leaveType);
@@ -268,11 +269,10 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
     );
   };
 
+  console.log("teamMembers", teamMembers);
   const getEmployeeName = (employeeId) => {
-    const member = teamMembers.find(
-      (m) => (m.employee_id || m.id) === employeeId
-    );
-    return member?.employee_name || member?.name || employeeId;
+    const member = teamMembers.find((m) => m.empid === employeeId);
+    return member?.name || employeeId;
   };
 
   const calculateDays = (start, end) => {
@@ -294,16 +294,14 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Pending Requests
+              Total Requests
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
-              <p className="text-2xl font-bold text-orange-600">
-                {pendingCount}
-              </p>
-              <div className="p-3 rounded-full bg-orange-100">
-                <CalendarOff className="h-6 w-6 text-orange-600" />
+              <p className="text-2xl font-bold">{leaves.length}</p>
+              <div className="p-3 rounded-full bg-blue-100">
+                <CalendarOff className="h-6 w-6 text-blue-600" />
               </div>
             </div>
           </CardContent>
@@ -333,6 +331,24 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">
+              Pending Requests
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <p className="text-2xl font-bold text-orange-600">
+                {pendingCount}
+              </p>
+              <div className="p-3 rounded-full bg-orange-100">
+                <CalendarOff className="h-6 w-6 text-orange-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
               Rejected
             </CardTitle>
           </CardHeader>
@@ -346,22 +362,6 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
               </p>
               <div className="p-3 rounded-full bg-red-100">
                 <XCircle className="h-6 w-6 text-red-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Requests
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <p className="text-2xl font-bold">{leaves.length}</p>
-              <div className="p-3 rounded-full bg-blue-100">
-                <CalendarOff className="h-6 w-6 text-blue-600" />
               </div>
             </div>
           </CardContent>
@@ -416,38 +416,23 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
                 <SelectContent>
                   <SelectItem value="all">All Employees</SelectItem>
                   {teamMembers.map((member) => (
-                    <SelectItem
-                      key={member.employee_id || member.id}
-                      value={String(member.employee_id || member.id)}
-                    >
-                      {member.employee_name || member.name}
+                    <SelectItem key={member.empid} value={String(member.empid)}>
+                      {member.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>Leave Type</Label>
-              <Select
-                value={filters.leaveType}
-                onValueChange={(value) =>
-                  setFilters({ ...filters, leaveType: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="casual">Casual</SelectItem>
-                  <SelectItem value="sick">Sick</SelectItem>
-                  <SelectItem value="earned">Earned</SelectItem>
-                  <SelectItem value="unpaid">Unpaid</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <SelectLeaveType
+              value={filters.leaveType}
+              onValueChange={(value) =>
+                setFilters({ ...filters, leaveType: value })
+              }
+              label="Leave Type"
+              includeAll={true}
+              onlyActive={true}
+            />
           </div>
         </CardContent>
       </Card>
@@ -483,16 +468,17 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {console.log("filteredLeaves", filteredLeaves)}
                   {filteredLeaves.map((leave, index) => {
                     const isPending = leave.status?.toLowerCase() === "pending";
                     return (
                       <TableRow key={index}>
                         <TableCell className="font-medium">
-                          {getEmployeeName(leave.employee_id || leave.id)}
+                          {getEmployeeName(leave.empid)} {`(${leave.empid})`}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline">
-                            {leave.leave_type || leave.type || "N/A"}
+                            {leave.leave_type_name || leave.leave_type || "-"}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -572,13 +558,12 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
             </DialogTitle>
             <DialogDescription>
               {selectedLeave && (
-                <>
-                  <div className="font-medium mt-2">
-                    {getEmployeeName(
-                      selectedLeave.employee_id || selectedLeave.id
-                    )}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
+                <span className="flex flex-col gap-1">
+                  <span className="font-medium mt-2">
+                    {getEmployeeName(selectedLeave.empid)}{" "}
+                    {`(${selectedLeave.empid})`}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
                     {formatDateDisplay(
                       selectedLeave.start_date || selectedLeave.from_date
                     )}{" "}
@@ -586,17 +571,17 @@ export default function LeaveApprovals({ teamMembers, managerId }) {
                     {formatDateDisplay(
                       selectedLeave.end_date || selectedLeave.to_date
                     )}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    {selectedLeave.leave_type || selectedLeave.type} •{" "}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    {selectedLeave.leave_type_name || selectedLeave.type} •{" "}
                     {selectedLeave.days ||
                       calculateDays(
                         selectedLeave.start_date || selectedLeave.from_date,
                         selectedLeave.end_date || selectedLeave.to_date
                       )}{" "}
                     day(s)
-                  </div>
-                </>
+                  </span>
+                </span>
               )}
             </DialogDescription>
           </DialogHeader>

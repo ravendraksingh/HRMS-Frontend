@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useAuth } from "@/components/common/AuthContext";
+import RouteGuard from "@/components/common/RouteGuard";
 import {
   LayoutDashboard,
   UserCircle,
@@ -18,6 +19,8 @@ import {
 export default function Home() {
   const { user } = useAuth();
   console.log("user in Home", user);
+
+  // Protected by RouteGuard - only authenticated users can see this
   const quickLinks = [
     {
       title: "Dashboard",
@@ -58,7 +61,8 @@ export default function Home() {
   ];
 
   return (
-    <div className="container mx-auto max-w-7xl p-6">
+    <RouteGuard requiredRoles="ALL">
+      <div className="container mx-auto max-w-7xl p-6">
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">
           Welcome
@@ -173,5 +177,6 @@ export default function Home() {
         </Card>
       </div>
     </div>
+    </RouteGuard>
   );
 }

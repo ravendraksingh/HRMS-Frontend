@@ -8,21 +8,16 @@ import Link from "next/link";
 import {
   Users,
   Building,
+  Building2,
   MapPin,
   ShieldUser,
   Settings,
   AlertCircle,
   CheckCircle2,
-  TrendingUp,
-  Calendar,
-  ArrowRight,
   RefreshCw,
-  UserCheck,
-  UserX,
-  Clock,
 } from "lucide-react";
 import { externalApiClient } from "@/app/services/externalApiClient";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
+import { getErrorMessage } from "@/lib/emsUtil";
 import { toast } from "sonner";
 import { Spinner } from "@/components/ui/shadcn-io/spinner";
 import { useAuth } from "@/components/common/AuthContext";
@@ -32,17 +27,32 @@ const AdminDashboardPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState({
-    totalUsers: 0,
-    totalEmployees: 0,
-    totalDepartments: 0,
-    totalLocations: 0,
-    totalRoles: 0,
-    activeUsers: 0,
-    presentToday: 0,
-    absentToday: 0,
-    pendingLeaveRequests: 0,
-    upcomingHolidays: [],
+  const [dashboardData, setDashboardData] = useState({
+    summary: {
+      users: {
+        total: 0,
+        active: 0,
+        logged_in_24h: 0,
+      },
+      departments: {
+        total: 0,
+      },
+      locations: {
+        total: 0,
+      },
+    },
+    system_health: {
+      status: "unknown",
+      database: {
+        connected: false,
+      },
+      server: {
+        uptime: "",
+        environment: "",
+      },
+    },
+    hourly_logged_in_users: [],
+    generated_at: null,
   });
 
   useEffect(() => {
@@ -60,146 +70,28 @@ const AdminDashboardPage = () => {
       }
       setError(null);
 
-      const today = new Date().toISOString().split("T")[0];
-      const currentYear = new Date().getFullYear();
+      const res = await externalApiClient.get("/admin/dashboard");
+      const data = res.data || {};
 
-      // Fetch total employees/users
-      try {
-        const employeesRes = await externalApiClient.get("/employees");
-        const employeesData =
-          employeesRes.data?.employees || employeesRes.data || [];
-        const employeesArray = Array.isArray(employeesData)
-          ? employeesData
-          : [];
-        const activeEmployees = employeesArray.filter(
-          (e) => e.is_active === "Y" || e.is_active === true || e.status === "active"
-        ).length;
-
-        setStats((prev) => ({
-          ...prev,
-          totalEmployees: employeesArray.length,
-          totalUsers: employeesArray.length,
-          activeUsers: activeEmployees,
-        }));
-      } catch (e) {
-        console.error("Error fetching employees:", e);
-      }
-
-      // Fetch departments count
-      try {
-        const deptRes = await externalApiClient.get("/departments");
-        const deptData = deptRes.data?.departments || deptRes.data || [];
-        setStats((prev) => ({
-          ...prev,
-          totalDepartments: Array.isArray(deptData) ? deptData.length : 0,
-        }));
-      } catch (e) {
-        console.error("Error fetching departments:", e);
-      }
-
-      // Fetch locations count
-      try {
-        const locationsRes = await externalApiClient.get("/locations");
-        const locationsData =
-          locationsRes.data?.locations || locationsRes.data || [];
-        setStats((prev) => ({
-          ...prev,
-          totalLocations: Array.isArray(locationsData)
-            ? locationsData.length
-            : 0,
-        }));
-      } catch (e) {
-        console.error("Error fetching locations:", e);
-      }
-
-      // Fetch roles count
-      try {
-        const rolesRes = await externalApiClient.get("/roles");
-        const rolesData = rolesRes.data?.roles || rolesRes.data || [];
-        setStats((prev) => ({
-          ...prev,
-          totalRoles: Array.isArray(rolesData) ? rolesData.length : 0,
-        }));
-      } catch (e) {
-        console.error("Error fetching roles:", e);
-      }
-
-      // Fetch today's attendance summary
-      try {
-        const attendanceRes = await externalApiClient.get(
-          `/attendance?attendance_date=${today}`
-        );
-        const attendanceData =
-          attendanceRes.data?.attendance || attendanceRes.data || [];
-        const attendanceArray = Array.isArray(attendanceData)
-          ? attendanceData
-          : [];
-
-        const presentCount = attendanceArray.filter(
-          (a) => a.status === "PRESENT" || a.check_in_time
-        ).length;
-        const absentCount = attendanceArray.filter(
-          (a) => a.status === "ABSENT"
-        ).length;
-
-        setStats((prev) => ({
-          ...prev,
-          presentToday: presentCount,
-          absentToday: absentCount,
-        }));
-      } catch (e) {
-        console.error("Error fetching attendance:", e);
-      }
-
-      // Fetch pending leave requests
-      try {
-        const leavesRes = await externalApiClient.get("/leaves");
-        const leavesData = leavesRes.data?.leaves || leavesRes.data || [];
-        const pendingLeaves = Array.isArray(leavesData)
-          ? leavesData.filter(
-              (l) => (l.status || "").toLowerCase() === "pending"
-            )
-          : [];
-        setStats((prev) => ({
-          ...prev,
-          pendingLeaveRequests: pendingLeaves.length,
-        }));
-      } catch (e) {
-        console.error("Error fetching leaves:", e);
-      }
-
-      // Fetch upcoming holidays
-      try {
-        const holidaysRes = await externalApiClient.get(
-          `/holidays?year=${currentYear}`
-        );
-        const holidaysData = holidaysRes.data?.holidays || [];
-        const upcoming = Array.isArray(holidaysData)
-          ? holidaysData
-              .filter((h) => {
-                const holidayDate = new Date(h.holiday_date || h.date);
-                return holidayDate >= new Date();
-              })
-              .sort((a, b) => {
-                const dateA = new Date(a.holiday_date || a.date);
-                const dateB = new Date(b.holiday_date || b.date);
-                return dateA - dateB;
-              })
-              .slice(0, 5)
-          : [];
-        setStats((prev) => ({
-          ...prev,
-          upcomingHolidays: upcoming,
-        }));
-      } catch (e) {
-        console.error("Error fetching holidays:", e);
-      }
+      setDashboardData({
+        summary: data.summary || {
+          users: { total: 0, active: 0, logged_in_24h: 0 },
+          departments: { total: 0 },
+          locations: { total: 0 },
+        },
+        system_health: data.system_health || {
+          status: "unknown",
+          database: { connected: false },
+          server: { uptime: "", environment: "" },
+        },
+        hourly_logged_in_users: data.hourly_logged_in_users || [],
+        generated_at: data.generated_at || null,
+      });
     } catch (error) {
-      const errorMessage =
-        error?.response?.data?.error ||
-        error?.response?.data?.message ||
-        error?.message ||
-        "Failed to load dashboard data";
+      const errorMessage = getErrorMessage(
+        error,
+        "Failed to load dashboard data"
+      );
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -270,13 +162,36 @@ const AdminDashboardPage = () => {
           <CardContent>
             <div className="flex items-center justify-between">
               <div className="flex-1">
-                <p className="text-2xl font-bold">{stats.totalUsers}</p>
+                <p className="text-2xl font-bold">
+                  {dashboardData.summary.users.total}
+                </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  {stats.activeUsers} active
+                  {dashboardData.summary.users.active} active
                 </p>
               </div>
               <div className="p-3 rounded-full bg-blue-100 ml-4">
                 <Users className="h-6 w-6 text-blue-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-gray-600">
+              Logged In (24h)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <p className="text-2xl font-bold">
+                  {dashboardData.summary.users.logged_in_24h}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Last 24 hours</p>
+              </div>
+              <div className="p-3 rounded-full bg-cyan-100 ml-4">
+                <Users className="h-6 w-6 text-cyan-600" />
               </div>
             </div>
           </CardContent>
@@ -291,7 +206,9 @@ const AdminDashboardPage = () => {
           <CardContent>
             <div className="flex items-center justify-between">
               <div className="flex-1">
-                <p className="text-2xl font-bold">{stats.totalDepartments}</p>
+                <p className="text-2xl font-bold">
+                  {dashboardData.summary.departments.total}
+                </p>
                 <p className="text-xs text-gray-500 mt-1">Active departments</p>
               </div>
               <div className="p-3 rounded-full bg-purple-100 ml-4">
@@ -310,30 +227,13 @@ const AdminDashboardPage = () => {
           <CardContent>
             <div className="flex items-center justify-between">
               <div className="flex-1">
-                <p className="text-2xl font-bold">{stats.totalLocations}</p>
+                <p className="text-2xl font-bold">
+                  {dashboardData.summary.locations.total}
+                </p>
                 <p className="text-xs text-gray-500 mt-1">Office locations</p>
               </div>
               <div className="p-3 rounded-full bg-green-100 ml-4">
                 <MapPin className="h-6 w-6 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">
-              Roles
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-2xl font-bold">{stats.totalRoles}</p>
-                <p className="text-xs text-gray-500 mt-1">System roles</p>
-              </div>
-              <div className="p-3 rounded-full bg-orange-100 ml-4">
-                <ShieldUser className="h-6 w-6 text-orange-600" />
               </div>
             </div>
           </CardContent>
@@ -345,80 +245,43 @@ const AdminDashboardPage = () => {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-gray-600">
-              Present Today
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-2xl font-bold text-green-600">
-                  {stats.presentToday}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">Employees present</p>
-              </div>
-              <div className="p-3 rounded-full bg-green-100 ml-4">
-                <UserCheck className="h-6 w-6 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">
-              Absent Today
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-2xl font-bold text-red-600">
-                  {stats.absentToday}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">Employees absent</p>
-              </div>
-              <div className="p-3 rounded-full bg-red-100 ml-4">
-                <UserX className="h-6 w-6 text-red-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">
-              Pending Leaves
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-2xl font-bold text-orange-600">
-                  {stats.pendingLeaveRequests}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">Awaiting approval</p>
-              </div>
-              <div className="p-3 rounded-full bg-orange-100 ml-4">
-                <Calendar className="h-6 w-6 text-orange-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">
               System Health
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
               <div className="flex-1">
-                <p className="text-2xl font-bold text-green-600">Active</p>
-                <p className="text-xs text-gray-500 mt-1">All systems operational</p>
+                <p
+                  className={`text-2xl font-bold ${
+                    dashboardData.system_health.status === "ok"
+                      ? "text-green-600"
+                      : "text-red-600"
+                  }`}
+                >
+                  {dashboardData.system_health.status === "ok"
+                    ? "Active"
+                    : dashboardData.system_health.status}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {dashboardData.system_health.database?.connected
+                    ? "Database connected"
+                    : "Database disconnected"}
+                </p>
               </div>
-              <div className="p-3 rounded-full bg-green-100 ml-4">
-                <CheckCircle2 className="h-6 w-6 text-green-600" />
+              <div
+                className={`p-3 rounded-full ml-4 ${
+                  dashboardData.system_health.status === "ok"
+                    ? "bg-green-100"
+                    : "bg-red-100"
+                }`}
+              >
+                <CheckCircle2
+                  className={`h-6 w-6 ${
+                    dashboardData.system_health.status === "ok"
+                      ? "text-green-600"
+                      : "text-red-600"
+                  }`}
+                />
               </div>
             </div>
           </CardContent>
@@ -432,170 +295,121 @@ const AdminDashboardPage = () => {
             <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button asChild className="w-full justify-start" size="lg">
-              <Link href="/admin/users">
-                <Users className="mr-2 h-4 w-4" />
-                Manage Users
+            <Button
+              asChild
+              className="w-full justify-start whitespace-normal text-left"
+              size="lg"
+            >
+              <Link href="/admin/users" className="flex items-center w-full">
+                <Users className="mr-2 h-4 w-4 flex-shrink-0" />
+                <span className="break-words">Manage Users</span>
               </Link>
             </Button>
             <Button
               asChild
               variant="outline"
-              className="w-full justify-start"
+              className="w-full justify-start whitespace-normal text-left"
               size="lg"
             >
-              <Link href="/admin/departments">
-                <Building className="mr-2 h-4 w-4" />
-                Manage Departments
+              <Link
+                href="/admin/organization"
+                className="flex items-center w-full"
+              >
+                <Building2 className="mr-2 h-4 w-4 flex-shrink-0" />
+                <span className="break-words">Manage Organization</span>
               </Link>
             </Button>
             <Button
               asChild
               variant="outline"
-              className="w-full justify-start"
+              className="w-full justify-start whitespace-normal text-left"
               size="lg"
             >
-              <Link href="/admin/locations">
-                <MapPin className="mr-2 h-4 w-4" />
-                Manage Locations
+              <Link
+                href="/admin/departments"
+                className="flex items-center w-full"
+              >
+                <Building className="mr-2 h-4 w-4 flex-shrink-0" />
+                <span className="break-words">Manage Departments</span>
               </Link>
             </Button>
             <Button
               asChild
               variant="outline"
-              className="w-full justify-start"
+              className="w-full justify-start whitespace-normal text-left"
               size="lg"
             >
-              <Link href="/admin/roles">
-                <ShieldUser className="mr-2 h-4 w-4" />
-                Manage Roles
+              <Link
+                href="/admin/locations"
+                className="flex items-center w-full"
+              >
+                <MapPin className="mr-2 h-4 w-4 flex-shrink-0" />
+                <span className="break-words">Manage Locations</span>
               </Link>
             </Button>
             <Button
               asChild
               variant="outline"
-              className="w-full justify-start"
+              className="w-full justify-start whitespace-normal text-left"
               size="lg"
             >
-              <Link href="/admin/setting">
-                <Settings className="mr-2 h-4 w-4" />
-                System Settings
+              <Link href="/admin/roles" className="flex items-center w-full">
+                <ShieldUser className="mr-2 h-4 w-4 flex-shrink-0" />
+                <span className="break-words">Manage Roles</span>
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              className="w-full justify-start whitespace-normal text-left"
+              size="lg"
+            >
+              <Link href="/admin/setting" className="flex items-center w-full">
+                <Settings className="mr-2 h-4 w-4 flex-shrink-0" />
+                <span className="break-words">System Settings</span>
               </Link>
             </Button>
           </CardContent>
         </Card>
 
         {/* System Overview */}
-        <Card className="lg:col-span-1">
+        <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>System Overview</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 border rounded">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-full bg-blue-100">
-                    <Users className="h-4 w-4 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Total Employees</p>
-                    <p className="text-sm text-gray-500">
-                      {stats.totalEmployees} registered
-                    </p>
-                  </div>
-                </div>
-                <Badge variant="secondary">{stats.totalEmployees}</Badge>
-              </div>
-              <div className="flex items-center justify-between p-3 border rounded">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-full bg-purple-100">
-                    <Building className="h-4 w-4 text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Departments</p>
-                    <p className="text-sm text-gray-500">
-                      {stats.totalDepartments} active
-                    </p>
-                  </div>
-                </div>
-                <Badge variant="secondary">{stats.totalDepartments}</Badge>
-              </div>
-              <div className="flex items-center justify-between p-3 border rounded">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-full bg-green-100">
-                    <MapPin className="h-4 w-4 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Locations</p>
-                    <p className="text-sm text-gray-500">
-                      {stats.totalLocations} offices
-                    </p>
-                  </div>
-                </div>
-                <Badge variant="secondary">{stats.totalLocations}</Badge>
-              </div>
-              <div className="flex items-center justify-between p-3 border rounded">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-full bg-orange-100">
-                    <ShieldUser className="h-4 w-4 text-orange-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Roles</p>
-                    <p className="text-sm text-gray-500">
-                      {stats.totalRoles} defined
-                    </p>
-                  </div>
-                </div>
-                <Badge variant="secondary">{stats.totalRoles}</Badge>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Upcoming Holidays */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Upcoming Holidays</CardTitle>
-              <Button asChild variant="ghost" size="sm">
-                <Link href="/manage-holidays">
-                  View All
-                  <ArrowRight className="ml-1 h-3 w-3" />
-                </Link>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {stats.upcomingHolidays.length > 0 ? (
-              <div className="space-y-3">
-                {stats.upcomingHolidays.map((holiday, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-2 border rounded"
-                  >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {dashboardData.system_health.server?.uptime && (
+                <div className="flex items-center justify-between p-3 border rounded">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-full bg-green-100">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    </div>
                     <div>
-                      <p className="font-medium">
-                        {holiday.name || holiday.holiday_name}
-                      </p>
+                      <p className="font-medium">Server Uptime</p>
                       <p className="text-sm text-gray-500">
-                        {formatDateDisplay(
-                          holiday.holiday_date || holiday.date
-                        )}
+                        {dashboardData.system_health.server.uptime}
                       </p>
                     </div>
-                    <Badge
-                      variant={holiday.is_optional ? "secondary" : "default"}
-                    >
-                      {holiday.type || "Company"}
-                    </Badge>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500 text-center py-4">
-                No upcoming holidays
-              </p>
-            )}
+                </div>
+              )}
+              {dashboardData.system_health.server?.environment && (
+                <div className="flex items-center justify-between p-3 border rounded">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-full bg-orange-100">
+                      <Settings className="h-4 w-4 text-orange-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium">Environment</p>
+                      <p className="text-sm text-gray-500">
+                        {dashboardData.system_health.server.environment}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -604,4 +418,3 @@ const AdminDashboardPage = () => {
 };
 
 export default AdminDashboardPage;
-

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { externalApiClient } from "@/app/services/externalApiClient";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
 import { normalizeDateForInput } from "./utils";
 import { useAuth } from "@/components/common/AuthContext";
 

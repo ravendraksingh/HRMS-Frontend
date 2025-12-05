@@ -1,16 +1,16 @@
+"use client";
+
+import RouteGuard from "@/components/common/RouteGuard";
+
 /**
- * Managers Route Group Layout
- * Server-side protection for all manager routes
- * Requires authentication to access any route in this group
- * Manager check (has direct reports) is done client-side
+ * Manager Layout - Protects all /manager/* routes
+ * Requires: MANAGER, HRMANAGER, or ADMIN role
  */
-
-import { requireAuth } from "@/lib/serverAuth";
-
-export default async function ManagersLayout({ children }) {
-  // Server-side auth check - redirects to login if not authenticated
-  await requireAuth();
-  
-  return <>{children}</>;
+export default function ManagerLayout({ children }) {
+  return (
+    <RouteGuard requiredRoles={["MANAGER", "HRMANAGER", "ADMIN"]}>
+      {children}
+    </RouteGuard>
+  );
 }
 

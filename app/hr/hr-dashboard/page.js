@@ -22,7 +22,8 @@ import {
   Settings,
 } from "lucide-react";
 import { externalApiClient } from "@/app/services/externalApiClient";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
+import { getTodayDate, getCurrentYear } from "@/lib/dateTimeUtil";
 import { toast } from "sonner";
 import { Spinner } from "@/components/ui/shadcn-io/spinner";
 import { useAuth } from "@/components/common/AuthContext";
@@ -59,8 +60,8 @@ const HRDashboardPage = () => {
       }
       setError(null);
 
-      const today = new Date().toISOString().split("T")[0];
-      const currentYear = new Date().getFullYear();
+      const today = getTodayDate();
+      const currentYear = getCurrentYear();
 
       // Fetch total employees
       try {

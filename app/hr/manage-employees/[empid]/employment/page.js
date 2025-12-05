@@ -100,6 +100,7 @@ const ManageEmployeeEmploymentPage = () => {
       employeeId={empid}
       history={employmentHistory}
       onUpdate={fetchEmploymentHistory}
+      isHRView={true}
     />
   );
 };

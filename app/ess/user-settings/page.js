@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -17,14 +17,27 @@ import {
   Key,
   CheckCircle2,
   XCircle,
+  Lock,
 } from "lucide-react";
 import { externalApiClient } from "@/app/services/externalApiClient";
 import { useAuth } from "@/components/common/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
 const ProfilePage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [userProfile, setUserProfile] = useState(null);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [passwordError, setPasswordError] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
 
   const { user } = useAuth();
   console.log("user in ProfilePage", user);
@@ -33,18 +46,22 @@ const ProfilePage = () => {
     async function fetchUserProfileDetails() {
       // Fetch user profile from API
 
+      if (!user?.username) {
+        setError("Username not available");
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError("");
 
-        // Fetch from API using the generic profile endpoint
-        let profileEndpoint = `/users/${user?.empid}/profile`;
+        // Fetch from API using username
+        let profileEndpoint = `/users/${user?.username}/profile`;
 
-        // Try to get employee ID from token or session if available
-        // For now, use generic endpoint
         console.log("Fetching profile from:", profileEndpoint);
         const res = await externalApiClient.get(profileEndpoint);
-        const data = res.data?.user || res.data;
+        const data = res.data;
 
         if (data) {
           console.log("Profile data fetched:", data);
@@ -65,7 +82,7 @@ const ProfilePage = () => {
     }
 
     fetchUserProfileDetails();
-  }, []);
+  }, [user?.username]);
 
   const getAllPermissions = () => {
     const profileData = userProfile;
@@ -89,6 +106,90 @@ const ProfilePage = () => {
     return permission
       .replace(/_/g, " ")
       .replace(/\b\w/g, (l) => l.toUpperCase());
+  };
+
+  const handlePasswordChange = (e) => {
+    const { name, value } = e.target;
+    setPasswordData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+    setPasswordError("");
+  };
+
+  const validatePasswordForm = () => {
+    if (!passwordData.currentPassword) {
+      setPasswordError("Current password is required");
+      return false;
+    }
+    if (!passwordData.newPassword) {
+      setPasswordError("New password is required");
+      return false;
+    }
+    if (passwordData.newPassword.length < 6) {
+      setPasswordError("New password must be at least 6 characters long");
+      return false;
+    }
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setPasswordError("New password and confirm password do not match");
+      return false;
+    }
+    if (passwordData.currentPassword === passwordData.newPassword) {
+      setPasswordError("New password must be different from current password");
+      return false;
+    }
+    return true;
+  };
+
+  const handleChangePassword = async () => {
+    if (!validatePasswordForm()) {
+      return;
+    }
+
+    if (!user?.username) {
+      setPasswordError("Username not available");
+      return;
+    }
+
+    try {
+      setChangingPassword(true);
+      setPasswordError("");
+
+      const response = await externalApiClient.post(
+        `/users/${user.username}/change-password`,
+        {
+          current_password: passwordData.currentPassword,
+          new_password: passwordData.newPassword,
+        }
+      );
+
+      toast.success("Password changed successfully!");
+      setPasswordData({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+      setShowPasswordForm(false);
+    } catch (err) {
+      const errorMessage =
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        "Failed to change password";
+      setPasswordError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  const handleCancelPasswordChange = () => {
+    setPasswordData({
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+    });
+    setPasswordError("");
+    setShowPasswordForm(false);
   };
 
   if (loading) {
@@ -168,33 +269,33 @@ const ProfilePage = () => {
               <div>
                 <p className="text-sm text-gray-500">Username</p>
                 <p className="font-semibold">
-                  {profileData?.username || "N/A"}
+                  {profileData?.user?.username || user?.username || "N/A"}
                 </p>
               </div>
             </div>
-            {(profileData?.employee_name || user?.employee_name) && (
+            {(profileData?.employee?.name || user?.employee_name) && (
               <div className="flex items-center gap-3">
                 <User className="h-5 w-5 text-gray-400" />
                 <div>
                   <p className="text-sm text-gray-500">Employee Name</p>
                   <p className="font-semibold">
-                    {profileData?.employee_name || user?.employee_name}
+                    {profileData?.employee?.name || user?.employee_name}
                   </p>
                 </div>
               </div>
             )}
-            {(profileData?.employee_email || user?.employee_email) && (
+            {(profileData?.employee?.email || user?.employee_email) && (
               <div className="flex items-center gap-3">
                 <Mail className="h-5 w-5 text-gray-400" />
                 <div>
                   <p className="text-sm text-gray-500">Employee Email</p>
                   <p className="font-semibold">
-                    {profileData?.employee_email || user?.employee_email}
+                    {profileData?.employee?.email || user?.employee_email}
                   </p>
                 </div>
               </div>
             )}
-            {(profileData?.empid ||
+            {(profileData?.user?.empid ||
               user?.empid ||
               profileData?.employee_code ||
               user?.employee_code) && (
@@ -203,7 +304,7 @@ const ProfilePage = () => {
                 <div>
                   <p className="text-sm text-gray-500">Employee ID</p>
                   <p className="font-semibold">
-                    {profileData?.empid ||
+                    {profileData?.user?.empid ||
                       user?.empid ||
                       profileData?.employee_code ||
                       user?.employee_code ||
@@ -217,8 +318,8 @@ const ProfilePage = () => {
               <div>
                 <p className="text-sm text-gray-500">Status</p>
                 <div className="flex items-center gap-2">
-                  {profileData?.is_active === "Y" ||
-                  profileData?.is_active === "y" ? (
+                  {profileData?.user?.is_active === "Y" ||
+                  profileData?.user?.is_active === "y" ? (
                     <>
                       <CheckCircle2 className="h-4 w-4 text-green-600" />
                       <span className="font-semibold text-green-600">
@@ -236,6 +337,59 @@ const ProfilePage = () => {
                 </div>
               </div>
             </div>
+            {profileData?.employee?.department && (
+              <div className="flex items-center gap-3">
+                <Building className="h-5 w-5 text-gray-400" />
+                <div>
+                  <p className="text-sm text-gray-500">Department</p>
+                  <p className="font-semibold">
+                    {profileData.employee.department.name}
+                    {profileData.employee.department.short_name &&
+                      ` (${profileData.employee.department.short_name})`}
+                  </p>
+                </div>
+              </div>
+            )}
+            {profileData?.employee?.location && (
+              <div className="flex items-center gap-3">
+                <Building className="h-5 w-5 text-gray-400" />
+                <div>
+                  <p className="text-sm text-gray-500">Location</p>
+                  <p className="font-semibold">
+                    {profileData.employee.location.name}
+                  </p>
+                </div>
+              </div>
+            )}
+            {profileData?.employee?.manager && (
+              <div className="flex items-center gap-3">
+                <User className="h-5 w-5 text-gray-400" />
+                <div>
+                  <p className="text-sm text-gray-500">Manager</p>
+                  <p className="font-semibold">
+                    {profileData.employee.manager.name}
+                  </p>
+                  {profileData.employee.manager.email && (
+                    <p className="text-xs text-gray-500">
+                      {profileData.employee.manager.email}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+            {profileData?.employee?.date_of_joining && (
+              <div className="flex items-center gap-3">
+                <Mail className="h-5 w-5 text-gray-400" />
+                <div>
+                  <p className="text-sm text-gray-500">Date of Joining</p>
+                  <p className="font-semibold">
+                    {new Date(
+                      profileData.employee.date_of_joining
+                    ).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+            )}
             {(profileData?.organization_code || user?.organization_code) && (
               <div className="flex items-center gap-3">
                 <Building className="h-5 w-5 text-gray-400" />
@@ -259,6 +413,96 @@ const ProfilePage = () => {
               </div>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Change Password Card */}
+      <Card className="mb-6">
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-orange-100 rounded-full">
+              <Lock className="h-6 w-6 text-orange-600" />
+            </div>
+            <div>
+              <CardTitle>Change Password</CardTitle>
+              <CardDescription>
+                Update your account password for better security
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!showPasswordForm ? (
+            <Button onClick={() => setShowPasswordForm(true)} variant="outline">
+              Change Password
+            </Button>
+          ) : (
+            <div className="space-y-4">
+              {passwordError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-800">
+                  {passwordError}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="currentPassword">Current Password</Label>
+                <Input
+                  id="currentPassword"
+                  name="currentPassword"
+                  type="password"
+                  placeholder="Enter your current password"
+                  value={passwordData.currentPassword}
+                  onChange={handlePasswordChange}
+                  disabled={changingPassword}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="newPassword">New Password</Label>
+                <Input
+                  id="newPassword"
+                  name="newPassword"
+                  type="password"
+                  placeholder="Enter your new password"
+                  value={passwordData.newPassword}
+                  onChange={handlePasswordChange}
+                  disabled={changingPassword}
+                />
+                <p className="text-xs text-gray-500">
+                  Password must be at least 6 characters long
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                <Input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  placeholder="Confirm your new password"
+                  value={passwordData.confirmPassword}
+                  onChange={handlePasswordChange}
+                  disabled={changingPassword}
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleChangePassword}
+                  disabled={changingPassword}
+                >
+                  {changingPassword ? "Changing..." : "Change Password"}
+                </Button>
+                <Button
+                  onClick={handleCancelPasswordChange}
+                  variant="outline"
+                  disabled={changingPassword}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -309,9 +553,15 @@ const ProfilePage = () => {
                     </div>
                     <Badge
                       variant="default"
-                      className="bg-green-600 text-white"
+                      className={
+                        role.is_active === "Y" || role.is_active === "y"
+                          ? "bg-green-600 text-white"
+                          : "bg-gray-400 text-white"
+                      }
                     >
-                      Active
+                      {role.is_active === "Y" || role.is_active === "y"
+                        ? "Active"
+                        : "Inactive"}
                     </Badge>
                   </div>
                   {role.permissions &&

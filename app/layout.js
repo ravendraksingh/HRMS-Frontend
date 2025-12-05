@@ -1,6 +1,6 @@
 import "./globals.css";
-import MainLayout from "@/components/common/MainLayout";
 import { Toaster } from "@/components/ui/sonner";
+import AppShell from "@/components/common/AppShell";
 import { AuthProvider } from "@/components/common/AuthContext";
 export const metadata = {
   title: {
@@ -46,7 +46,7 @@ export default async function RootLayout({ children }) {
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased flex">
         <AuthProvider>
-          <MainLayout>{children}</MainLayout>
+          <AppShell>{children}</AppShell>
         </AuthProvider>
         <Toaster position="top-center" richColors />
       </body>

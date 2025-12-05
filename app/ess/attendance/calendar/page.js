@@ -21,9 +21,10 @@ import {
   Coffee,
   Timer,
   LogOut,
+  UserX,
 } from "lucide-react";
-import { formatDateToYYYYMMDD } from "@/lib/dateTimeUtil";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
+import { formatDateToYYYYMMDD, getTodayDate } from "@/lib/dateTimeUtil";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
 import { useAuth } from "@/components/common/AuthContext";
 import { externalApiClient } from "@/app/services/externalApiClient";
 import {
@@ -35,6 +36,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { getCurrentMonth } from "@/lib/dateTimeUtil";
+import SelectMonth from "@/components/common/SelectMonth";
 
 const AttendanceCalendarPage = () => {
   const { user } = useAuth();
@@ -51,6 +54,7 @@ const AttendanceCalendarPage = () => {
     totalDays: 0,
     workingDays: 0,
     presentDays: 0,
+    absentDays: 0,
     totalWorkingHours: 0,
     holidays: 0,
     optionalHolidays: 0,
@@ -59,27 +63,23 @@ const AttendanceCalendarPage = () => {
     lateArrivals: 0,
     earlyDepartures: 0,
     overtimeHours: 0,
+    weeklyOffs: 0,
+    correctionsPending: 0,
+    correctionsApproved: 0,
+    correctionsRejected: 0,
   });
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    return `${year}-${month}`;
-  });
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
   const [loading, setLoading] = useState(true);
 
   // Fetch attendance calendar (includes calendar, attendance, and leaves)
   const fetchAttendanceCalendar = useCallback(async (employeeId, month) => {
     try {
-      const [year, monthNum] = month.split("-").map(Number);
-
-      // Fetch attendance calendar endpoint
       const res = await externalApiClient.get(
-        `/attendance-calendar?empid=${employeeId}&year=${year}&month=${monthNum}`
+        `/employees/${employeeId}/calendar/attendance/monthly?month=${month}`
       );
 
       const data = res.data;
-    //   console.log("data", data);
+      //   console.log("data", data);
       setCalendarData(data);
 
       // Update monthly stats from summary
@@ -96,6 +96,7 @@ const AttendanceCalendarPage = () => {
           totalDays: parseNumber(summary?.total_days),
           workingDays: parseNumber(summary?.working_days),
           presentDays: parseNumber(summary?.attendance?.present),
+          absentDays: parseNumber(summary?.attendance?.absent),
           totalWorkingHours: parseNumber(summary?.attendance?.total_work_hours),
           holidays: parseNumber(summary?.holidays),
           optionalHolidays: parseNumber(summary?.optional_holidays),
@@ -105,6 +106,16 @@ const AttendanceCalendarPage = () => {
           earlyDepartures: parseNumber(summary?.attendance?.early_departures),
           overtimeHours: parseNumber(
             summary?.attendance?.overtime_hours || summary?.overtime_hours || 0
+          ),
+          weeklyOffs: parseNumber(summary?.weekly_offs),
+          correctionsPending: parseNumber(
+            summary?.correction_requests?.pending || 0
+          ),
+          correctionsApproved: parseNumber(
+            summary?.correction_requests?.approved || 0
+          ),
+          correctionsRejected: parseNumber(
+            summary?.correction_requests?.rejected || 0
           ),
         });
       }
@@ -171,7 +182,8 @@ const AttendanceCalendarPage = () => {
   const getAttendanceStatus = useCallback(
     (date) => {
       const dateStr = formatDateToYYYYMMDD(date);
-      const today = new Date();
+      const todayStr = getTodayDate();
+      const today = new Date(todayStr);
       today.setHours(0, 0, 0, 0);
       const dateToCheck = new Date(date);
       dateToCheck.setHours(0, 0, 0, 0);
@@ -204,38 +216,19 @@ const AttendanceCalendarPage = () => {
         };
       }
 
-      // Use day_status from the response
+      // Use day_status from the response as the primary source of truth
       const dayStatus = calendarDay.day_status;
 
-      // Handle non-working days (holidays, weekly offs)
-      if (dayStatus === "NON_WORKING" || !calendarDay.is_working_day) {
-        if (calendarDay.calendar_type === "HOLIDAY") {
-          return {
-            status: "holiday",
-            label: calendarDay.calendar_reason || "Holiday",
-            color: "red",
-            isHoliday: true,
-            holidayName: calendarDay.calendar_reason,
-          };
-        } else if (calendarDay.calendar_type === "OPTIONAL_HOLIDAY") {
-          return {
-            status: "holiday",
-            label: calendarDay.calendar_reason || "Optional Holiday",
-            color: "red",
-            isHoliday: true,
-            holidayName: calendarDay.calendar_reason,
-          };
-        } else if (calendarDay.calendar_type === "WEEKLY_OFF") {
-          return {
-            status: "weekly_off",
-            label: "Weekly Off",
-            color: "gray",
-            isWeeklyOff: true,
-          };
-        }
+      // Check for correction requests
+      const correctionRequests = calendarDay.correction_requests || [];
+      let correctionRequest = null;
+      let correctionStatus = null;
+      if (correctionRequests.length > 0) {
+        correctionRequest = correctionRequests[0]; // Get the most recent one
+        correctionStatus = correctionRequest.status?.toUpperCase();
       }
 
-      // Handle leaves
+      // Handle leaves first (they take precedence over other statuses)
       if (dayStatus === "ON_LEAVE") {
         const leave = calendarDay.leaves?.[0];
         return {
@@ -258,9 +251,9 @@ const AttendanceCalendarPage = () => {
         };
       }
 
-      // Handle attendance status
+      // Handle attendance status (PRESENT)
       if (dayStatus === "PRESENT" && calendarDay.attendance) {
-        return {
+        const baseStatus = {
           status: "present",
           label: "Present",
           color: "green",
@@ -269,14 +262,102 @@ const AttendanceCalendarPage = () => {
           isLate: calendarDay.attendance.is_late === "Y",
           isEarlyLeave: calendarDay.attendance.is_early_leave === "Y",
         };
+
+        // Add correction request info if present
+        if (correctionRequest) {
+          baseStatus.hasCorrection = true;
+          baseStatus.correctionStatus = correctionStatus;
+          baseStatus.correctionRequest = correctionRequest;
+          if (correctionStatus === "PENDING") {
+            baseStatus.label = "Present (Correction Pending)";
+          } else if (correctionStatus === "APPROVED") {
+            baseStatus.label = "Present (Correction Approved)";
+          } else if (correctionStatus === "REJECTED") {
+            baseStatus.label = "Present (Correction Rejected)";
+          }
+        }
+
+        return baseStatus;
       }
 
+      // Handle correction requests for non-present days
+      if (correctionRequest && dayStatus !== "PRESENT") {
+        if (correctionStatus === "PENDING") {
+          return {
+            status: "correction_pending",
+            label: "Correction Pending",
+            color: "yellow",
+            hasCorrection: true,
+            correctionStatus: "PENDING",
+            correctionRequest: correctionRequest,
+          };
+        } else if (correctionStatus === "APPROVED") {
+          return {
+            status: "correction_approved",
+            label: "Correction Approved",
+            color: "teal",
+            hasCorrection: true,
+            correctionStatus: "APPROVED",
+            correctionRequest: correctionRequest,
+          };
+        } else if (correctionStatus === "REJECTED") {
+          return {
+            status: "correction_rejected",
+            label: "Correction Rejected",
+            color: "pink",
+            hasCorrection: true,
+            correctionStatus: "REJECTED",
+            correctionRequest: correctionRequest,
+          };
+        }
+      }
+
+      // Handle non-working days (holidays, weekly offs)
+      // Check calendar_type first as it's more specific
+      if (calendarDay.calendar_type === "HOLIDAY") {
+        return {
+          status: "holiday",
+          label: calendarDay.calendar_reason || "Holiday",
+          color: "red",
+          isHoliday: true,
+          holidayName: calendarDay.calendar_reason,
+        };
+      } else if (calendarDay.calendar_type === "OPTIONAL_HOLIDAY") {
+        return {
+          status: "holiday",
+          label: calendarDay.calendar_reason || "Optional Holiday",
+          color: "red",
+          isHoliday: true,
+          holidayName: calendarDay.calendar_reason,
+        };
+      } else if (calendarDay.calendar_type === "WEEKLY_OFF") {
+        return {
+          status: "weekly_off",
+          label: "Weekly Off",
+          color: "gray",
+          isWeeklyOff: true,
+        };
+      } else if (dayStatus === "NON_WORKING" || !calendarDay.is_working_day) {
+        return {
+          status: "weekly_off",
+          label: "Non-Working",
+          color: "gray",
+          isWeeklyOff: true,
+        };
+      }
+
+      // Handle EXPECTED status (future working days or absent)
       if (dayStatus === "EXPECTED") {
         // Future working day
         if (dateToCheck > today) {
           return { status: "future", label: "Future", color: "gray" };
         }
-        // Past working day without attendance
+        // Past working day without attendance - this is absent
+        return { status: "absent", label: "Absent", color: "red" };
+      }
+
+      // Handle ABSENT status explicitly if provided
+      if (dayStatus === "ABSENT") {
         return { status: "absent", label: "Absent", color: "red" };
       }
 
@@ -301,6 +382,12 @@ const AttendanceCalendarPage = () => {
         return "bg-blue-100 border-blue-300 text-blue-800";
       case "leave_pending":
         return "bg-orange-100 border-orange-300 text-orange-800";
+      case "correction_pending":
+        return "bg-yellow-100 border-yellow-400 text-yellow-900";
+      case "correction_approved":
+        return "bg-teal-100 border-teal-400 text-teal-900";
+      case "correction_rejected":
+        return "bg-pink-100 border-pink-400 text-pink-900";
       case "not_clocked":
         return "bg-gray-100 border-gray-300 text-gray-600";
       case "future":
@@ -415,29 +502,7 @@ const AttendanceCalendarPage = () => {
           </p>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder="Select month" />
-            </SelectTrigger>
-            <SelectContent>
-              {Array.from({ length: 12 }, (_, i) => {
-                const date = new Date();
-                date.setMonth(date.getMonth() - i);
-                const year = date.getFullYear();
-                const month = String(date.getMonth() + 1).padStart(2, "0");
-                const monthStr = `${year}-${month}`;
-                const monthName = date.toLocaleDateString("en-US", {
-                  month: "long",
-                  year: "numeric",
-                });
-                return (
-                  <SelectItem key={monthStr} value={monthStr}>
-                    {monthName}
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+          <SelectMonth value={selectedMonth} onValueChange={setSelectedMonth} />
         </div>
       </div>
 
@@ -445,27 +510,43 @@ const AttendanceCalendarPage = () => {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
         <Card>
           <CardContent>
-            <p className="text-xs font-medium text-blue-700 flex items-center gap-1.5 mb-1.5">
+            <p className="text-sm font-medium text-blue-700 flex items-center gap-1.5 mb-1.5">
               <CalendarDays className="h-3.5 w-3.5" />
               Total Days
             </p>
             <p className="text-xl sm:text-2xl font-bold text-blue-900">
               {monthlyStats.totalDays}
             </p>
-            <p className="text-[10px] text-blue-600 mt-0.5">Days in month</p>
+            <p className="text-xs text-blue-600 mt-0.5">Days in month</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent>
-            <p className="text-xs font-medium text-indigo-700 flex items-center gap-1.5 mb-1.5">
+            <p className="text-sm font-medium text-purple-700 flex items-center gap-1.5 mb-1.5">
+              <CalendarIcon className="h-3.5 w-3.5" />
+              Holidays
+            </p>
+            <p className="text-xl sm:text-2xl font-bold text-purple-900">
+              {monthlyStats.holidays + monthlyStats.optionalHolidays}
+            </p>
+            <p className="text-xs text-purple-600 mt-0.5">
+              {monthlyStats.holidays} Mandatory, {monthlyStats.optionalHolidays}{" "}
+              Optional
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent>
+            <p className="text-sm font-medium text-indigo-700 flex items-center gap-1.5 mb-1.5">
               <Briefcase className="h-3.5 w-3.5" />
               Working Days
             </p>
             <p className="text-xl sm:text-2xl font-bold text-indigo-900">
               {monthlyStats.workingDays}
             </p>
-            <p className="text-[10px] text-indigo-600 mt-0.5">
+            <p className="text-xs text-indigo-600 mt-0.5">
               Scheduled work days
             </p>
           </CardContent>
@@ -473,14 +554,14 @@ const AttendanceCalendarPage = () => {
 
         <Card>
           <CardContent>
-            <p className="text-xs font-medium text-green-700 flex items-center gap-1.5 mb-1.5">
+            <p className="text-sm font-medium text-green-700 flex items-center gap-1.5 mb-1.5">
               <TrendingUp className="h-3.5 w-3.5" />
               Present Days
             </p>
             <p className="text-xl sm:text-2xl font-bold text-green-900">
               {monthlyStats.presentDays}
             </p>
-            <p className="text-[10px] text-green-600 mt-0.5">
+            <p className="text-xs text-green-600 mt-0.5">
               of {monthlyStats.workingDays} working
             </p>
           </CardContent>
@@ -488,85 +569,91 @@ const AttendanceCalendarPage = () => {
 
         <Card>
           <CardContent>
-            <p className="text-xs font-medium text-cyan-700 flex items-center gap-1.5 mb-1.5">
-              <Clock className="h-3.5 w-3.5" />
-              Total Hours
-            </p>
-            <p className="text-xl sm:text-2xl font-bold text-cyan-900">
-              {safeToFixed(monthlyStats.totalWorkingHours)}
-            </p>
-            <p className="text-[10px] text-cyan-600 mt-0.5">Work hours</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent>
-            <p className="text-xs font-medium text-purple-700 flex items-center gap-1.5 mb-1.5">
-              <CalendarIcon className="h-3.5 w-3.5" />
-              Holidays
-            </p>
-            <p className="text-xl sm:text-2xl font-bold text-purple-900">
-              {monthlyStats.holidays}
-            </p>
-            <p className="text-[10px] text-purple-600 mt-0.5">
-              {monthlyStats.optionalHolidays > 0
-                ? `${monthlyStats.optionalHolidays} optional`
-                : "Holidays"}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent>
-            <p className="text-xs font-medium text-amber-700 flex items-center gap-1.5 mb-1.5">
+            <p className="text-sm font-medium text-amber-700 flex items-center gap-1.5 mb-1.5">
               <Coffee className="h-3.5 w-3.5" />
               Leaves
             </p>
             <p className="text-xl sm:text-2xl font-bold text-amber-900">
               {monthlyStats.leavesApproved + monthlyStats.leavesPending}
             </p>
-            <p className="text-[10px] text-amber-600 mt-0.5">
-              {monthlyStats.leavesApproved}A, {monthlyStats.leavesPending}P
+            <p className="text-xs text-amber-600 mt-0.5">
+              {monthlyStats.leavesApproved} Approved,{" "}
+              {monthlyStats.leavesPending} Pending
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent>
-            <p className="text-xs font-medium text-orange-700 flex items-center gap-1.5 mb-1.5">
+            <p className="text-sm font-medium text-yellow-700 flex items-center gap-1.5 mb-1.5">
+              <Zap className="h-3.5 w-3.5" />
+              Corrections
+            </p>
+            <p className="text-xl sm:text-2xl font-bold text-yellow-900">
+              {monthlyStats.correctionsPending +
+                monthlyStats.correctionsApproved +
+                monthlyStats.correctionsRejected}
+            </p>
+            <p className="text-xs text-yellow-600 mt-0.5">
+              {monthlyStats.correctionsPending} Pending,{" "}
+              {monthlyStats.correctionsApproved} Approved,{" "}
+              {monthlyStats.correctionsRejected} Rejected
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent>
+            <p className="text-sm font-medium text-red-700 flex items-center gap-1.5 mb-1.5">
+              <UserX className="h-3.5 w-3.5" />
+              Absent
+            </p>
+            <p className="text-xl sm:text-2xl font-bold text-red-900">
+              {monthlyStats.absentDays}
+            </p>
+            <p className="text-xs text-red-600 mt-0.5">Absent days</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent>
+            <p className="text-sm font-medium text-cyan-700 flex items-center gap-1.5 mb-1.5">
+              <Clock className="h-3.5 w-3.5" />
+              Total Hours
+            </p>
+            <p className="text-xl sm:text-2xl font-bold text-cyan-900">
+              {safeToFixed(monthlyStats.totalWorkingHours)}
+            </p>
+            <p className="text-xs text-cyan-600 mt-0.5">Work hours</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent>
+            <p className="text-sm font-medium text-orange-700 flex items-center gap-1.5 mb-1.5">
               <AlertCircle className="h-3.5 w-3.5" />
-              Late Arrivals
+              Late Arrival/Early Leave
             </p>
             <p className="text-xl sm:text-2xl font-bold text-orange-900">
-              {monthlyStats.lateArrivals}
+              {monthlyStats.lateArrivals + monthlyStats.earlyDepartures}
             </p>
-            <p className="text-[10px] text-orange-600 mt-0.5">Times late</p>
+            <p className="text-xs text-orange-600 mt-0.5">
+              {monthlyStats.lateArrivals} Late Arrival,{" "}
+              {monthlyStats.earlyDepartures} Early Leave
+            </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent>
-            <p className="text-xs font-medium text-pink-700 flex items-center gap-1.5 mb-1.5">
-              <LogOut className="h-3.5 w-3.5" />
-              Early Departures
-            </p>
-            <p className="text-xl sm:text-2xl font-bold text-pink-900">
-              {monthlyStats.earlyDepartures}
-            </p>
-            <p className="text-[10px] text-pink-600 mt-0.5">Times early</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent>
-            <p className="text-xs font-medium text-teal-700 flex items-center gap-1.5 mb-1.5">
+            <p className="text-sm font-medium text-teal-700 flex items-center gap-1.5 mb-1.5">
               <Timer className="h-3.5 w-3.5" />
               Overtime Hours
             </p>
             <p className="text-xl sm:text-2xl font-bold text-teal-900">
               {safeToFixed(monthlyStats.overtimeHours)}
             </p>
-            <p className="text-[10px] text-teal-600 mt-0.5">Extra hours</p>
+            <p className="text-xs text-teal-600 mt-0.5">Extra hours</p>
           </CardContent>
         </Card>
       </div>
@@ -655,7 +742,18 @@ const AttendanceCalendarPage = () => {
                                       className={cn(
                                         "text-[10px] px-1.5 py-0.5 whitespace-nowrap",
                                         day.status === "present"
-                                          ? "bg-green-500 text-white"
+                                          ? day.hasCorrection &&
+                                            day.correctionStatus === "PENDING"
+                                            ? "bg-yellow-500 text-white"
+                                            : day.hasCorrection &&
+                                              day.correctionStatus ===
+                                                "APPROVED"
+                                            ? "bg-teal-500 text-white"
+                                            : day.hasCorrection &&
+                                              day.correctionStatus ===
+                                                "REJECTED"
+                                            ? "bg-pink-500 text-white"
+                                            : "bg-green-500 text-white"
                                           : day.status === "absent"
                                           ? "bg-red-500 text-white"
                                           : day.status === "holiday"
@@ -664,6 +762,12 @@ const AttendanceCalendarPage = () => {
                                           ? "bg-blue-500 text-white"
                                           : day.status === "leave_pending"
                                           ? "bg-orange-500 text-white"
+                                          : day.status === "correction_pending"
+                                          ? "bg-yellow-500 text-white"
+                                          : day.status === "correction_approved"
+                                          ? "bg-teal-500 text-white"
+                                          : day.status === "correction_rejected"
+                                          ? "bg-pink-500 text-white"
                                           : ""
                                       )}
                                     >
@@ -721,8 +825,8 @@ const AttendanceCalendarPage = () => {
                                 </div>
                               </div>
                             </DialogTrigger>
-                            {/* Show dialog on mobile for details */}
-                            <DialogContent className="sm:hidden max-w-[90vw]">
+                            {/* Show dialog on all devices for details */}
+                            <DialogContent className="max-w-[90vw] sm:max-w-md">
                               <DialogHeader>
                                 <DialogTitle className="flex items-center justify-between text-base">
                                   <span>{formatDateDisplay(day.dateStr)}</span>
@@ -739,9 +843,18 @@ const AttendanceCalendarPage = () => {
                                         ? "default"
                                         : "secondary"
                                     }
-                                    className={
+                                    className={cn(
                                       day.status === "present"
-                                        ? "bg-green-500 text-white"
+                                        ? day.hasCorrection &&
+                                          day.correctionStatus === "PENDING"
+                                          ? "bg-yellow-500 text-white"
+                                          : day.hasCorrection &&
+                                            day.correctionStatus === "APPROVED"
+                                          ? "bg-teal-500 text-white"
+                                          : day.hasCorrection &&
+                                            day.correctionStatus === "REJECTED"
+                                          ? "bg-pink-500 text-white"
+                                          : "bg-green-500 text-white"
                                         : day.status === "absent"
                                         ? "bg-red-500 text-white"
                                         : day.status === "holiday"
@@ -750,8 +863,14 @@ const AttendanceCalendarPage = () => {
                                         ? "bg-blue-500 text-white"
                                         : day.status === "leave_pending"
                                         ? "bg-orange-500 text-white"
+                                        : day.status === "correction_pending"
+                                        ? "bg-yellow-500 text-white"
+                                        : day.status === "correction_approved"
+                                        ? "bg-teal-500 text-white"
+                                        : day.status === "correction_rejected"
+                                        ? "bg-pink-500 text-white"
                                         : ""
-                                    }
+                                    )}
                                   >
                                     {day.label}
                                   </Badge>
@@ -830,9 +949,63 @@ const AttendanceCalendarPage = () => {
                                     </p>
                                   </div>
                                 )}
+                                {day.hasCorrection && day.correctionRequest && (
+                                  <div>
+                                    <p className="text-sm font-medium mb-1">
+                                      Correction Request:
+                                    </p>
+                                    <div className="space-y-1">
+                                      <Badge
+                                        variant={
+                                          day.correctionStatus === "PENDING"
+                                            ? "default"
+                                            : day.correctionStatus ===
+                                              "APPROVED"
+                                            ? "default"
+                                            : "destructive"
+                                        }
+                                        className={
+                                          day.correctionStatus === "PENDING"
+                                            ? "bg-yellow-500 text-white"
+                                            : day.correctionStatus ===
+                                              "APPROVED"
+                                            ? "bg-teal-500 text-white"
+                                            : "bg-pink-500 text-white"
+                                        }
+                                      >
+                                        {day.correctionStatus}
+                                      </Badge>
+                                      {day.correctionRequest
+                                        .requested_check_in && (
+                                        <p className="text-xs text-gray-600">
+                                          Requested:{" "}
+                                          {new Date(
+                                            day.correctionRequest.requested_check_in
+                                          ).toLocaleTimeString("en-US", {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                          })}{" "}
+                                          -{" "}
+                                          {new Date(
+                                            day.correctionRequest.requested_check_out
+                                          ).toLocaleTimeString("en-US", {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                          })}
+                                        </p>
+                                      )}
+                                      {day.correctionRequest.reason && (
+                                        <p className="text-xs text-gray-600">
+                                          Reason: {day.correctionRequest.reason}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                                 {!day.clockIn &&
                                   !day.holidayName &&
-                                  !day.leaveType && (
+                                  !day.leaveType &&
+                                  !day.hasCorrection && (
                                     <p className="text-sm text-gray-600">
                                       {day.status === "absent"
                                         ? "No attendance recorded for this working day"
@@ -858,7 +1031,7 @@ const AttendanceCalendarPage = () => {
           {/* Legend */}
           <div className="mt-6 pt-4 border-t">
             <p className="text-sm font-semibold mb-3">Legend:</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 rounded bg-green-100 border border-green-300"></div>
                 <span className="text-sm">Present</span>
@@ -882,6 +1055,18 @@ const AttendanceCalendarPage = () => {
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 rounded bg-orange-100 border border-orange-300"></div>
                 <span className="text-sm">Leave Pending</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded bg-yellow-100 border border-yellow-400"></div>
+                <span className="text-sm">Correction Pending</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded bg-teal-100 border border-teal-400"></div>
+                <span className="text-sm">Correction Approved</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded bg-pink-100 border border-pink-400"></div>
+                <span className="text-sm">Correction Rejected</span>
               </div>
             </div>
           </div>

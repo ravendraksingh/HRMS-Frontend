@@ -2,6 +2,9 @@
   "name": "ems",
   "version": "0.1.0",
   "private": true,
+  "license": "PROPRIETARY",
+  "author": "Niyava Technologies Pvt. Ltd.",
+  "copyright": "Copyright (c) 2024 Niyava Technologies Pvt. Ltd. All rights reserved.",
   "scripts": {
     "dev": "next dev --turbo",
     "build": "next build --webpack",

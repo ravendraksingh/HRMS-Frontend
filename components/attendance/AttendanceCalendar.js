@@ -5,7 +5,7 @@ import { Calendar } from "../ui/calendar";
 import { cn } from "../../lib/utils";
 import { format } from "date-fns";
 import apiClient from "@/app/services/internalApiClient";
-import { formatTime } from "@/lib/dateTimeUtil";
+import { formatTime, getCurrentMonthNumber } from "@/lib/dateTimeUtil";
 import { Captions } from "lucide-react";
 import {
   Dialog,
@@ -42,7 +42,7 @@ function CustomDay(props) {
   const { selectedDay, attendance, onEdit } = props;
   console.log(props);
   const todayDate = new Date();
-  const currentMonth = todayDate.getMonth();
+  const currentMonth = getCurrentMonthNumber() - 1; // getMonth() returns 0-11
   const date = props.day.date;
   const month = date.getMonth();
   const attnIndex = format(date, "yyyy-MM-dd");

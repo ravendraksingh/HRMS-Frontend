@@ -33,14 +33,9 @@ import {
 } from "@/components/ui/table";
 import { externalApiClient } from "@/app/services/externalApiClient";
 import { toast } from "sonner";
-import {
-  Clock,
-  CheckCircle2,
-  XCircle,
-  RefreshCw,
-  Filter,
-} from "lucide-react";
-import { formatDateDisplay } from "@/lib/formatDateDisplay";
+import { Clock, CheckCircle2, XCircle, RefreshCw, Filter } from "lucide-react";
+import { formatDateDisplay } from "@/lib/dateTimeUtil";
+import { formatTime24Hour } from "@/lib/dateTimeUtil";
 import { Spinner } from "@/components/ui/shadcn-io/spinner";
 import { useAuth } from "@/components/common/AuthContext";
 
@@ -71,7 +66,7 @@ export default function AttendanceCorrections({ teamMembers, managerId }) {
     if (teamMembers && teamMembers.length > 0 && managerId) {
       fetchCorrections();
     }
-  }, [teamMembers, managerId]);
+  }, [teamMembers, managerId, filters.status]);
 
   useEffect(() => {
     filterCorrections();
@@ -87,11 +82,20 @@ export default function AttendanceCorrections({ teamMembers, managerId }) {
       setLoading(true);
       let correctionRequests = [];
 
+      // Build query parameters
+      const queryParams = new URLSearchParams();
+      if (filters.status && filters.status !== "all") {
+        queryParams.append("status", filters.status);
+      }
+
+      const queryString = queryParams.toString();
+      const endpoint = `/managers/${managerId}/employees/attendance/corrections${
+        queryString ? `?${queryString}` : ""
+      }`;
+
       try {
         // Try manager-specific endpoint for regularization requests (if it exists)
-        const managerRes = await externalApiClient.get(
-          `/managers/${managerId}/attendance/corrections`
-        );
+        const managerRes = await externalApiClient.get(endpoint);
         const managerData = managerRes.data?.corrections || [];
         if (Array.isArray(managerData) && managerData.length > 0) {
           correctionRequests = managerData.map((item) => ({
@@ -117,14 +121,14 @@ export default function AttendanceCorrections({ teamMembers, managerId }) {
         if (appliedAtB.getTime() !== appliedAtA.getTime()) {
           return appliedAtB - appliedAtA;
         }
-        
+
         // Then by correction_date (desc)
         const correctionDateA = new Date(a.correction_date || 0);
         const correctionDateB = new Date(b.correction_date || 0);
         if (correctionDateB.getTime() !== correctionDateA.getTime()) {
           return correctionDateB - correctionDateA;
         }
-        
+
         // Finally by empid (asc)
         const empidA = a.empid || "";
         const empidB = b.empid || "";
@@ -152,7 +156,11 @@ export default function AttendanceCorrections({ teamMembers, managerId }) {
     }
 
     if (filters.employee !== "all") {
-      filtered = filtered.filter((c) => c.empid === filters.empid);
+      const employeeId =
+        typeof filters.employee === "object"
+          ? filters.employee?.empid
+          : filters.employee;
+      filtered = filtered.filter((c) => c.empid === employeeId);
     }
 
     // Maintain sort order: applied_at desc, then correction_date desc, then empid asc
@@ -163,14 +171,14 @@ export default function AttendanceCorrections({ teamMembers, managerId }) {
       if (appliedAtB.getTime() !== appliedAtA.getTime()) {
         return appliedAtB - appliedAtA;
       }
-      
+
       // Then by correction_date (desc)
       const correctionDateA = new Date(a.correction_date || 0);
       const correctionDateB = new Date(b.correction_date || 0);
       if (correctionDateB.getTime() !== correctionDateA.getTime()) {
         return correctionDateB - correctionDateA;
       }
-      
+
       // Finally by empid (asc)
       const empidA = a.empid || "";
       const empidB = b.empid || "";
@@ -283,7 +291,9 @@ export default function AttendanceCorrections({ teamMembers, managerId }) {
       // Show results
       if (successCount > 0) {
         toast.success(
-          `${successCount} correction(s) ${bulkAction === "approve" ? "approved" : "rejected"} successfully`
+          `${successCount} correction(s) ${
+            bulkAction === "approve" ? "approved" : "rejected"
+          } successfully`
         );
       }
       if (failCount > 0) {
@@ -435,19 +445,6 @@ export default function AttendanceCorrections({ teamMembers, managerId }) {
     return member?.name;
   };
 
-  const formatTime = (timeString) => {
-    if (!timeString) return "N/A";
-    try {
-      const date = new Date(timeString);
-      return date.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return timeString;
-    }
-  };
-
   const pendingCount = corrections.filter(
     (c) => c.status?.toLowerCase() === "pending"
   ).length;
@@ -455,20 +452,18 @@ export default function AttendanceCorrections({ teamMembers, managerId }) {
   return (
     <div className="space-y-6">
       {/* Summary Card */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Pending Requests
+              Total Requests
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
-              <p className="text-2xl font-bold text-orange-600">
-                {pendingCount}
-              </p>
-              <div className="p-3 rounded-full bg-orange-100">
-                <Clock className="h-6 w-6 text-orange-600" />
+              <p className="text-2xl font-bold">{corrections.length}</p>
+              <div className="p-3 rounded-full bg-blue-100">
+                <Clock className="h-6 w-6 text-blue-600" />
               </div>
             </div>
           </CardContent>
@@ -499,14 +494,38 @@ export default function AttendanceCorrections({ teamMembers, managerId }) {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Requests
+              Pending Requests
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
-              <p className="text-2xl font-bold">{corrections.length}</p>
-              <div className="p-3 rounded-full bg-blue-100">
-                <Clock className="h-6 w-6 text-blue-600" />
+              <p className="text-2xl font-bold text-orange-600">
+                {pendingCount}
+              </p>
+              <div className="p-3 rounded-full bg-orange-100">
+                <Clock className="h-6 w-6 text-orange-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Rejected
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <p className="text-2xl font-bold text-red-600">
+                {
+                  corrections.filter(
+                    (c) => c.status?.toLowerCase() === "rejected"
+                  ).length
+                }
+              </p>
+              <div className="p-3 rounded-full bg-red-100">
+                <XCircle className="h-6 w-6 text-red-600" />
               </div>
             </div>
           </CardContent>
@@ -661,7 +680,9 @@ export default function AttendanceCorrections({ teamMembers, managerId }) {
                               onCheckedChange={() =>
                                 handleSelectCorrection(correction.id)
                               }
-                              aria-label={`Select correction for ${getEmployeeName(correction.empid)}`}
+                              aria-label={`Select correction for ${getEmployeeName(
+                                correction.empid
+                              )}`}
                             />
                           )}
                         </TableCell>
@@ -677,10 +698,10 @@ export default function AttendanceCorrections({ teamMembers, managerId }) {
                           {formatDateDisplay(correction.correction_date)}
                         </TableCell>
                         <TableCell className="font-medium text-blue-600">
-                          {formatTime(correction.requested_check_in)}
+                          {formatTime24Hour(correction.requested_check_in)}
                         </TableCell>
                         <TableCell className="font-medium text-blue-600">
-                          {formatTime(correction.requested_check_out)}
+                          {formatTime24Hour(correction.requested_check_out)}
                         </TableCell>
                         <TableCell className="max-w-xs truncate">
                           {correction.comment || "-"}
@@ -749,27 +770,26 @@ export default function AttendanceCorrections({ teamMembers, managerId }) {
             </DialogTitle>
             <DialogDescription>
               {selectedCorrection && (
-                <>
-                  <div className="font-medium mt-2">
+                <span className="flex flex-col gap-1">
+                  <span className="font-medium mt-2">
                     {getEmployeeName(selectedCorrection.empid)}
-                  </div>
-                  <div className="text-sm text-muted-foreground mt-1">
+                    {` [${selectedCorrection.empid}]`}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
                     Date:{" "}
                     {formatDateDisplay(selectedCorrection.correction_date)}
-                  </div>
-                  <div className="text-sm text-muted-foreground mt-1">
-                    <div>
-                      Requested:{" "}
-                      {formatTime(selectedCorrection.requested_check_in)} -{" "}
-                      {formatTime(selectedCorrection.requested_check_out)}
-                    </div>
-                  </div>
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    Requested:{" "}
+                    {formatTime24Hour(selectedCorrection.requested_check_in)} -{" "}
+                    {formatTime24Hour(selectedCorrection.requested_check_out)}
+                  </span>
                   {selectedCorrection.comment && (
-                    <div className="text-sm text-muted-foreground mt-1">
+                    <span className="text-sm text-muted-foreground mt-1">
                       Reason: {selectedCorrection.comment}
-                    </div>
+                    </span>
                   )}
-                </>
+                </span>
               )}
             </DialogDescription>
           </DialogHeader>
